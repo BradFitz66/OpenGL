@@ -3,7 +3,8 @@
 #![allow(clippy::single_match)]
 #![allow(clippy::zero_ptr)]
 
-const WINDOW_TITLE: &str = "Triangle: Draw Arrays Cleaned Up";
+const WINDOW_TITLE: &str = "'Hello world!' said the triangle";
+
 mod lib;
 
 
@@ -134,15 +135,14 @@ fn main() {
         );
         glEnableVertexAttribArray(0);
 
-        //Create a shader program (is this ugly?)
+        //Build shader program (is this ugly?)
         let shader_program = ShaderProgramBuilder::new()
         .attach_shader(ShaderType::Vertex, VERT_SHADER)
         .attach_shader(ShaderType::Fragment, FRAG_SHADER)
         .link()
-        .expect("Failed to link shader program");
+        .expect("Failed to build shader program");
 
         glUseProgram(shader_program.0);
-
     }
 
     'main_loop: loop {
