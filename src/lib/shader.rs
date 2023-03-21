@@ -4,12 +4,10 @@ use std::ffi::CString;
 
 use ogl33::*;
 
-
 pub enum ShaderType {
-    Vertex=GL_VERTEX_SHADER as isize,
-    Fragment=GL_FRAGMENT_SHADER as isize,
+    Vertex = GL_VERTEX_SHADER as isize,
+    Fragment = GL_FRAGMENT_SHADER as isize,
 }
-
 
 pub struct ShaderProgramBuilder {
     id: GLuint,
@@ -19,7 +17,7 @@ pub struct ShaderProgram(pub GLuint);
 
 impl ShaderProgramBuilder {
     pub fn new() -> Self {
-        unsafe{
+        unsafe {
             Self {
                 id: glCreateProgram(),
             }
@@ -53,15 +51,13 @@ impl ShaderProgramBuilder {
                     String::from_utf8(v).unwrap()
                 );
             }
-            
+
             Some(ShaderProgram(self.id))
         }
     }
 }
 
-
 unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u32> {
-    
     let shader = glCreateShader(shader_type as u32);
     let shader_src = CString::new(shader_src).unwrap();
     glShaderSource(shader, 1, &shader_src.as_ptr(), std::ptr::null());

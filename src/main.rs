@@ -1,12 +1,12 @@
+#![allow(non_snake_case)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(unused_imports)]
 #![allow(clippy::single_match)]
 #![allow(clippy::zero_ptr)]
-
+#![allow(special_module_name)]
 const WINDOW_TITLE: &str = "'Hello world!' said the triangle";
 
 mod lib;
-
 
 use beryllium::*;
 use core::{
@@ -15,52 +15,16 @@ use core::{
 };
 
 use crate::lib::{
-    shader::{ShaderProgram, ShaderType, ShaderProgramBuilder},
     buffer::*,
+    mesh::*,
+    shader::{ShaderProgram, ShaderProgramBuilder, ShaderType},
+    vertex_array::VertexArray,
 };
 
 use self::lib::*;
 
 use ogl33::*;
-use std::{ffi::CString, any::Any};
-
-type Vertex = [f32; 3];
-
-const TRIANGLE: [Vertex; 3] = [[-0.5, -0.5, 0.0], [0.5, -0.5, 0.0], [0.0, 0.5, 0.0]];
-
-const CUBE: [Vertex; 8] = [ 
-    // front
-    [-0.5, -0.5,  0.5],
-    [ 0.5, -0.5,  0.5],
-    [ 0.5,  0.5,  0.5],
-    [-0.5,  0.5,  0.5],
-    // back
-    [-0.5, -0.5, -0.5],
-    [ 0.5, -0.5, -0.5],
-    [ 0.5,  0.5, -0.5],
-    [-0.5,  0.5, -0.5]
-];
-
-const CUBE_INDICES: [GLushort; 36] = [
-    // front
-    0, 1, 2,
-    2, 3, 0,
-    // right
-    1, 5, 6,
-    6, 2, 1,
-    // back
-    7, 6, 5,
-    5, 4, 7,
-    // left
-    4, 0, 3,
-    3, 7, 4,
-    // bottom
-    4, 5, 1,
-    1, 0, 4,
-    // top
-    3, 2, 6,
-    6, 7, 3,
-];
+use std::{any::Any, ffi::CString};
 
 const VERT_SHADER: &str = r#"#version 330 core
   layout (location = 0) in vec3 pos;
@@ -91,7 +55,7 @@ fn main() {
             .unwrap();
     }
 
-    let win = sdl
+    let mut win = sdl
         .create_gl_window(
             WINDOW_TITLE,
             WindowPosition::Centered,
@@ -100,52 +64,36 @@ fn main() {
             WindowFlags::Shown,
         )
         .expect("couldn't make a window and context");
-    win.set_swap_interval(SwapInterval::Vsync);
+    win.set_swap_interval(SwapInterval::Immediate);
+    let mut rect_mesh: Mesh;
 
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
         glClearColor(0.2, 0.3, 0.3, 1.0);
-
         //Create vertex array object
-        let mut vao = 0;
-        glGenVertexArrays(1, &mut vao);
-        glBindVertexArray(vao);
-        assert_ne!(vao, 0);
-
-        //Create vertex buffer object
-        let buffer = Buffer::new().expect("Failed to create buffer");
-        buffer.bind(GL_ARRAY_BUFFER);
-
-        //Copy vertex data to buffer
-        glBufferData(
-            GL_ARRAY_BUFFER,
-            size_of_val(&TRIANGLE).try_into().unwrap(),
-            TRIANGLE.as_ptr() as *const _,
-            GL_STATIC_DRAW,
+        rect_mesh = Mesh::new(
+            vec![
+                Vertex([-0.5, -0.5, 0.0], [0.0, 0.0, 0.0], [-0.5, -0.5]),
+                Vertex([0.5, -0.5, 0.0], [0.0, 0.0, 0.0], [0.5, -0.5]),
+                Vertex([0.5, 0.5, 0.0], [0.0, 0.0, 0.0], [0.5, 0.5]),
+                Vertex([-0.5, 0.5, 0.0], [0.0, 0.0, 0.0], [-0.5, 0.5]),
+            ],
+            vec![[0, 1, 3], [1, 2, 3]],
         );
-
-        //Set vertex attribute pointers
-        glVertexAttribPointer(
-            0,
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            size_of::<Vertex>().try_into().unwrap(),
-            std::ptr::null(),
-        );
-        glEnableVertexAttribArray(0);
+        rect_mesh.setup();
 
         //Build shader program (is this ugly?)
         let shader_program = ShaderProgramBuilder::new()
-        .attach_shader(ShaderType::Vertex, VERT_SHADER)
-        .attach_shader(ShaderType::Fragment, FRAG_SHADER)
-        .link()
-        .expect("Failed to build shader program");
+            .attach_shader(ShaderType::Vertex, VERT_SHADER)
+            .attach_shader(ShaderType::Fragment, FRAG_SHADER)
+            .link()
+            .expect("Failed to build shader program");
 
         glUseProgram(shader_program.0);
     }
 
     'main_loop: loop {
+        let frame_start = sdl.get_ticks();
         // handle events this frame
         while let Some(event) = sdl.poll_events().and_then(Result::ok) {
             match event {
@@ -153,15 +101,21 @@ fn main() {
                 _ => (),
             }
         }
-        // now the events are clear.
-
-        // here's where we could change the world state if we had some.
-
-        // and then draw!
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glDrawElements(
+                GL_TRIANGLES,
+                (rect_mesh.vertices.len() + rect_mesh.indices.len())
+                    .try_into()
+                    .unwrap(),
+                GL_UNSIGNED_INT,
+                0 as *const _,
+            );
         }
         win.swap_window();
+        let msec = sdl.get_ticks() - frame_start;
+        if msec > 0 {
+            win.set_title(&format!("{} - FPS: {}", WINDOW_TITLE, 1000 / msec));
+        }
     }
 }
