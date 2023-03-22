@@ -6,23 +6,13 @@
 #![allow(special_module_name)]
 const WINDOW_TITLE: &str = "'Hello world!' said the triangle";
 
-mod lib;
 
+use OpenGL::*;
 use beryllium::*;
 use core::{
     convert::{TryFrom, TryInto},
     mem::{size_of, size_of_val},
 };
-
-use crate::lib::{
-    buffer::*,
-    mesh::*,
-    shader::{ShaderProgram, ShaderProgramBuilder, ShaderType},
-    vertex_array::VertexArray,
-    objparser::*
-};
-
-use self::lib::*;
 
 use ogl33::*;
 use std::{any::Any, ffi::CString, path::Path};
@@ -34,25 +24,23 @@ const VERT_SHADER: &str = r#"#version 330 core
   layout (location = 0) in vec3 pos;
 
 
-  uniform mat4 model;
-  uniform mat4 view;
-  uniform mat4 projection;
-
+  uniform mat4 transform;
   out vec2 tex_coord;
 
   void main() {
     //gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
-    gl_Position = projection * view * model * vec4(pos,1.0);
+    gl_Position = transform * vec4(pos,1.0);
     tex_coord = vec2(pos.x, pos.y);
   }
 "#;
 
 const FRAG_SHADER: &str = r#"#version 330 core
+  uniform vec4 uni_color;
   out vec4 final_color;
   in vec2 tex_coord;
   void main() {
     //Set final color to gl_FragCoord
-    final_color = vec4(gl_FragCoord.x / 800.0, gl_FragCoord.y / 600.0, 0.0, 1.0);
+    final_color = uni_color;
   }
 "#;
 
@@ -78,50 +66,37 @@ fn main() {
         )
         .expect("couldn't make a window and context");
     win.set_swap_interval(SwapInterval::Immediate);
-    let mut rect_mesh: Mesh;
-
-    //let test = ParseOBJ(Path::new("./assets/Cube.obj"));
-    let view: Matrix4<f32> = Matrix4::from_translation(vec3(0., 0., 0.));
-    let projection: Matrix4<f32> = perspective(Deg(45.0), 800 as f32 / 600 as f32, 0.1, 100.0);    
-    let model: Matrix4<f32>= Matrix4::from_translation(vec3(0., 0., 0.));
-
+    let mut tri_mesh:Mesh;
+    let mut shader_program;
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
-        glClearColor(0.2, 0.3, 0.3, 1.0);
-        glEnable(GL_DEPTH_TEST);
-        //Create vertex array object
-        rect_mesh = Mesh::new(
-            //Rectangle vertices
+        glClearColor(0.392, 0.584, 0.929, 1.0);
+        tri_mesh=Mesh::new(
             vec![
-                Vertex([-0.5, -0.5, 0.0], [0.0, 0.0, 0.0], [-0.5, -0.5]),
-                Vertex([0.5, -0.5, 0.0], [0.0, 0.0, 0.0], [0.5, -0.5]),
-                Vertex([0.5, 0.5, 0.0], [0.0, 0.0, 0.0], [0.5, 0.5]),
-                Vertex([-0.5, 0.5, 0.0], [0.0, 0.0, 0.0], [-0.5, 0.5]),
+                Vertex([0.0,0.5,0.0],[0.0,0.0,0.0],[0.0,0.5]),
+                Vertex([0.5,-0.5,0.0],[0.0,0.0,0.0],[0.5,-0.5]),
+                Vertex([-0.5,-0.5,0.0],[0.0,0.0,0.0],[-0.5,-0.5]),
             ],
-            vec![
-                [0, 1, 2],
-                [0, 2, 3]
-            ],
+            vec![[0, 1, 2]],
         );
-        rect_mesh.setup();
+        tri_mesh.setup();   
 
-        //Build shader program (is this ugly?)
-        let shader_program = ShaderProgramBuilder::new()
-            .attach_shader(ShaderType::Vertex, VERT_SHADER)
-            .attach_shader(ShaderType::Fragment, FRAG_SHADER)
+        shader_program = ShaderProgramBuilder::new()
+            .create_shader(ShaderType::Vertex,VERT_SHADER)
+            .create_shader(ShaderType::Fragment,FRAG_SHADER)
             .link()
-            .expect("Failed to build shader program");
+            .unwrap();
 
+        shader_program.create_uniform(cstr!("transform"));
+        shader_program.create_uniform(cstr!("uni_color"));
         glUseProgram(shader_program.0);
-        let modelLoc = glGetUniformLocation(shader_program.0, cstr!("model").as_ptr());
-        let viewLoc = glGetUniformLocation(shader_program.0, cstr!("view").as_ptr());
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &(model[0][0] as f32));
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &(view[0][0] as f32));
-        shader_program.set_mat4(cstr!("projection"), &projection);
     }
-
+    
     'main_loop: loop {
+        
         let frame_start = sdl.get_ticks();
+        
+        
         // handle events this frame
         while let Some(event) = sdl.poll_events().and_then(Result::ok) {
             match event {
@@ -129,16 +104,17 @@ fn main() {
                 _ => (),
             }
         }
+        let time = sdl.get_ticks() as f32 / 10.0_f32;
+        let transform = Matrix4::from_angle_z(Deg(time));
+
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-            glDrawElements(
-                GL_TRIANGLES,
-                (rect_mesh.vertices.len() + rect_mesh.indices.len())
-                    .try_into()
-                    .unwrap(),
-                GL_UNSIGNED_INT,
-                0 as *const _,
-            );
+            let transform_name: *const c_char  = cstr!("transform").as_ptr().cast();
+            
+            shader_program.set_mat4("transform", &transform);
+            shader_program.set_vec4("uni_color", &Vector4::new(1.0, 0.0, 0.0, 1.0));
+            
+            glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, std::ptr::null());
         }
         win.swap_window();
         let msec = sdl.get_ticks() - frame_start;
