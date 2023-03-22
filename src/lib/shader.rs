@@ -1,7 +1,8 @@
 //Builder pattern for shader program
 
-use std::ffi::CString;
+use std::ffi::{CString, CStr};
 
+use cgmath::Matrix4;
 use ogl33::*;
 
 pub enum ShaderType {
@@ -14,6 +15,12 @@ pub struct ShaderProgramBuilder {
 }
 
 pub struct ShaderProgram(pub GLuint);
+
+impl ShaderProgram{
+    pub unsafe fn set_mat4(&self, name:&CStr, mat:&Matrix4<f32>){
+        glUniformMatrix4fv(glGetUniformLocation(self.0, name.as_ptr()), 1, GL_FALSE, &(mat[0][0] as f32));
+    }
+}
 
 impl ShaderProgramBuilder {
     pub fn new() -> Self {
@@ -33,6 +40,7 @@ impl ShaderProgramBuilder {
 
         self
     }
+
 
     pub fn link(&self) -> Option<ShaderProgram> {
         unsafe {

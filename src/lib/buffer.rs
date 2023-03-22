@@ -2,6 +2,8 @@
 
 use ogl33::*;
 
+
+#[derive(Clone,Copy)]
 pub struct Buffer(pub GLuint);
 
 impl Buffer {

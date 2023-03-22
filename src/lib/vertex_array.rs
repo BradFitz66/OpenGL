@@ -1,5 +1,7 @@
 use ogl33::*;
 
+
+#[derive(Clone,Copy)]
 pub struct VertexArray(pub GLuint);
 
 impl VertexArray {
