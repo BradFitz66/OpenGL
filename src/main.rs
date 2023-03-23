@@ -19,31 +19,6 @@ use ogl33::*;
 use std::ffi::CStr;
 use std::{any::Any, ffi::CString, path::Path};
 
-const VERT_SHADER: &str = r#"#version 330 core
-  layout (location = 0) in vec3 pos;
-
-
-  uniform mat4 MVP;
-
-  out vec2 tex_coord;
-
-  void main() {
-    //gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
-    gl_Position = MVP * vec4(pos,1.0);
-    tex_coord = vec2(pos.x, pos.y);
-  }
-"#;
-
-const FRAG_SHADER: &str = r#"#version 330 core
-  uniform vec4 uni_color;
-  out vec4 final_color;
-  in vec2 tex_coord;
-  void main() {
-    //Set final color to gl_FragCoord
-    final_color = uni_color;
-  }
-"#;
-
 fn main() {
     let sdl = SDL::init(InitFlags::Everything).expect("couldn't start SDL");
     sdl.gl_set_attribute(SdlGlAttr::MajorVersion, 3).unwrap();
@@ -68,36 +43,41 @@ fn main() {
     win.set_swap_interval(SwapInterval::Immediate);
     let mut rect_mesh: Mesh;
     let mut shader_program;
-    let mut camera = Camera::new(Vector3::new(8.0, 3.0, 3.0), Vector3::new(0.0, 0.0, 0.0));
-
+    let mut camera = Camera::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0));
+    let mut test = mesh_from_obj(Path::new("assets/models/monke.obj"));
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
         glClearColor(0.392, 0.584, 0.929, 1.0);
-        rect_mesh = Mesh::new(
-            //Rectangle vertices
-            vec![
-                [ 1.0,  0.5, 0.0,  1.0,  0.5],
-                [ 1.0, -0.5, 0.0,  1.0, -0.5],
-                [-1.0, -0.5, 0.0, -1.0, -0.5],
-                [-1.0,  0.5, 0.0, -1.0,  0.5],
-            ],
-            //Rectangle faces
-            vec![
-                [0, 1, 3],
-                [1,2,3],
+        glEnable(GL_DEPTH_TEST);
+        // rect_mesh = Mesh::new(
+        //     //Rectangle vertices
+        //     vec![
+        //         [ 1.0,  0.5, 0.0, 0.0, 0.0, 0.0,  1.0,  0.5],
+        //         [ 1.0, -0.5, 0.0, 0.0, 0.0, 0.0,  1.0, -0.5],
+        //         [-1.0, -0.5, 0.0, 0.0, 0.0, 0.0, -1.0, -0.5],
+        //         [-1.0,  0.5, 0.0, 0.0, 0.0, 0.0, -1.0,  0.5],
+        //     ],
+        //     //Rectangle faces
+        //     vec![
+        //         [0, 1, 3],
+        //         [1,2,3],
 
-            ],
-        );
-        rect_mesh.setup();
+        //     ],
+        // );
+        // rect_mesh.setup();
+        test.setup();
 
         shader_program = ShaderProgramBuilder::new()
-            .create_shader(ShaderType::Vertex, VERT_SHADER)
-            .create_shader(ShaderType::Fragment, FRAG_SHADER)
+            .create_shader(ShaderType::Vertex, &shader_from_file(Path::new("assets/shaders/vertex_shader.vert")))
+            .create_shader(ShaderType::Fragment, &shader_from_file(Path::new("assets/shaders/fragment_shader.frag")))
             .link()
             .unwrap();
 
         shader_program.create_uniform(cstr!("MVP"));
         shader_program.create_uniform(cstr!("uni_color"));
+        shader_program.create_uniform(cstr!("V"));
+        shader_program.create_uniform(cstr!("M"));
+        shader_program.create_uniform(cstr!("sun_pos"));
         glUseProgram(shader_program.0);
     }
 
@@ -116,18 +96,20 @@ fn main() {
         let rot_speed = 0.01;
         //Rotate camera around the triangle with a speed of rot_speed
         camera.set_position(Vector3::new(
-            3.0 * (time * rot_speed).sin(),
+            6.0 * (time * rot_speed).sin(),
             0.0,
-            3.0 * (time * rot_speed).cos(),
+            6.0 * (time * rot_speed).cos(),
         ));
 
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             let mvp = camera.get_projection_matrix() * camera.get_view_matrix() * transform;
             shader_program.set_mat4("MVP", &mvp);
-            shader_program.set_vec4("uni_color", &Vector4::new(1.0, 0.0, 0.0, 1.0));
-
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, std::ptr::null());
+            shader_program.set_vec3("uni_color", &Vector3::new(1.0, 0.0, 0.0));
+            shader_program.set_mat4("V", &camera.get_view_matrix());
+            shader_program.set_mat4("M", &transform);
+            shader_program.set_vec3("sun_pos", &Vector3::new(3.0, 0.0, 0.0));
+            test.draw();
         }
         win.swap_window();
         let msec = sdl.get_ticks() - frame_start;

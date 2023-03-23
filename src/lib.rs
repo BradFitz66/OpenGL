@@ -1,4 +1,6 @@
-use __core::{ops::Deref};
+#![feature(unsized_locals)]
+
+use __core::ops::Deref;
 use bytemuck::*;
 use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3};
 use ogl33::*;
@@ -90,14 +92,12 @@ pub struct ShaderProgram(pub GLuint, pub HashMap<String, GLint>); //Program, Uni
 impl ShaderProgram {
     pub unsafe fn create_uniform(&mut self, name: &CStr) {
         let uniform_location = glGetUniformLocation(self.0, name.as_ptr());
-        if uniform_location < 0 {
-            panic!("Failed to find uniform {}", name.to_str().unwrap());
-        } else {
-            self.1
-                .insert(name.to_str().unwrap().to_string(), uniform_location);
-        }
+        self.1
+        .insert(name.to_str().unwrap().to_string(), uniform_location);
     }
+    
     pub unsafe fn set_mat4(&self, name: &str, mat: &Matrix4<f32>) {
+
         glUniformMatrix4fv(
             self.1[name],
             1,
@@ -158,6 +158,15 @@ impl ShaderProgramBuilder {
     }
 }
 
+pub fn shader_from_file(path: &Path) -> String {
+    let mut file = File::open(path).expect("Failed to open file");
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .expect("Failed to read file");
+
+    contents
+}
+
 //Compiles a shader from a string source and returns the shader id
 unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u32> {
     let shader = glCreateShader(shader_type as u32);
@@ -185,13 +194,37 @@ unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u3
 
 //Parse an obj file and return a mesh (HEAVILY WIP)
 pub fn mesh_from_obj(path: &Path) -> Mesh {
-    let (models,_) = tobj::load_obj(path, &tobj::LoadOptions::default()).unwrap();
+    let (models, _) = tobj::load_obj(path, &tobj::LoadOptions::default()).unwrap();
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indicies: Vec<VertIndicies> = Vec::new();
+    let mesh = &models[0].mesh;
 
+    //Creates a Vec<Vec<f32>> (where each Vec<f32> has a length of 3)
+    let vertex_positions:Vec<Vertex> = models[0]
+        .mesh
+        .positions
+        .chunks(3)
+        .map(|chunk| TryInto::<[f32; 3]>::try_into(chunk).unwrap())
+        .into_iter()
+        .map(|chunk| {
+            let mut result = [0.0; 8];
+            result[..3].copy_from_slice(&chunk);
+            result
+        })
+        .collect();
 
+    let vertex_indices:Vec<VertIndicies> = models[0]
+        .mesh
+        .indices
+        .chunks(3)
+        .map(|chunk| TryInto::<[u32; 3]>::try_into(chunk).unwrap())
+        .collect();
 
-    Mesh{
-        vertices:Vec::new(),
-        indicies:Vec::new(),
+    //Convert vertex_positions from Vec<[f32;8]> to Vec<Vertex>
+
+    Mesh {
+        vertices: vertex_positions,
+        indicies: vertex_indices,
         vao: None,
         vbo: None,
         ebo: None,
@@ -200,7 +233,7 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
 
 pub type VertIndicies = [u32; 3];
 
-pub type Vertex=[f32; 3+2]; //Position, Normal, TextureCoords
+pub type Vertex = [f32; 3 + 3 + 2]; //Position, Normal, TextureCoords
 
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
@@ -255,6 +288,16 @@ impl Mesh {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(
             1,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            std::mem::size_of::<Vertex>().try_into().unwrap(),
+            std::mem::size_of::<[f32; 3]>() as *const _,
+        );
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(
+            2,
             2,
             GL_FLOAT,
             GL_FALSE,
@@ -263,6 +306,17 @@ impl Mesh {
         );
 
         self
+    }
+    pub fn draw(&self) {
+        unsafe {
+            //Print the combined lengths of the vertices and indicies
+            glDrawElements(
+                GL_TRIANGLES,
+                self.indicies.len() as i32 * 3,
+                GL_UNSIGNED_INT,
+                std::ptr::null(),
+            );
+        }
     }
 }
 
