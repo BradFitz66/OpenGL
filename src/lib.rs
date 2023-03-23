@@ -1,12 +1,16 @@
+use __core::{ops::Deref};
+use bytemuck::*;
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3};
 use ogl33::*;
-use std::{ffi::{CStr, CString}, collections::HashMap};
-use cgmath::Matrix4;
+use std::{
+    collections::HashMap,
+    ffi::{CStr, CString},
+};
 use std::{
     fs::File,
     io::{prelude::*, BufReader},
     path::Path,
 };
-use bytemuck::*;
 
 //Wrapper for opengl buffer objects
 #[derive(Clone, Copy)]
@@ -88,9 +92,9 @@ impl ShaderProgram {
         let uniform_location = glGetUniformLocation(self.0, name.as_ptr());
         if uniform_location < 0 {
             panic!("Failed to find uniform {}", name.to_str().unwrap());
-        }
-        else{
-            self.1.insert(name.to_str().unwrap().to_string(), uniform_location);
+        } else {
+            self.1
+                .insert(name.to_str().unwrap().to_string(), uniform_location);
         }
     }
     pub unsafe fn set_mat4(&self, name: &str, mat: &Matrix4<f32>) {
@@ -103,22 +107,11 @@ impl ShaderProgram {
     }
 
     pub unsafe fn set_vec3(&self, name: &str, vec: &cgmath::Vector3<f32>) {
-        glUniform3f(
-            self.1[name],
-            vec.x,
-            vec.y,
-            vec.z,
-        );
+        glUniform3f(self.1[name], vec.x, vec.y, vec.z);
     }
 
     pub unsafe fn set_vec4(&self, name: &str, vec: &cgmath::Vector4<f32>) {
-        glUniform4f(
-            self.1[name],
-            vec.x,
-            vec.y,
-            vec.z,
-            vec.w,
-        );
+        glUniform4f(self.1[name], vec.x, vec.y, vec.z, vec.w);
     }
 }
 
@@ -160,7 +153,7 @@ impl ShaderProgramBuilder {
                 );
             }
 
-            Some(ShaderProgram(self.id,self.uniforms.clone()))
+            Some(ShaderProgram(self.id, self.uniforms.clone()))
         }
     }
 }
@@ -191,83 +184,27 @@ unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u3
 }
 
 //Parse an obj file and return a mesh (HEAVILY WIP)
-pub fn parse_obj(path: &Path) -> Mesh {
-    let mut positions: Vec<Vec<f32>> = Vec::new();
-    let mut norms: Vec<Vec<f32>> = Vec::new();
-    let mut texs: Vec<Vec<f32>> = Vec::new();
-    let mut indices: Vec<VertIndicies> = Vec::new();
-    println!("Parsing OBJ file: {}", path.as_os_str().to_str().unwrap());
-    let file = BufReader::new(File::open(path.as_os_str()).expect("Failed to open file"));
-    for line in file.lines() {
-        let line = line.unwrap();
-        let mut words = line.split_whitespace();
-        match words.next() {
-            Some("v") => {
-                let x = words.next().unwrap().parse::<f32>().unwrap();
-                let y = words.next().unwrap().parse::<f32>().unwrap();
-                let z = words.next().unwrap().parse::<f32>().unwrap();
-                positions.push(vec![x, y, z]);
-            }
-            Some("vn") => {
-                let x = words.next().unwrap().parse::<f32>().unwrap();
-                let y = words.next().unwrap().parse::<f32>().unwrap();
-                let z = words.next().unwrap().parse::<f32>().unwrap();
-                norms.push(vec![x, y, z]);
-            }
-            Some("vt") => {
-                let x = words.next().unwrap().parse::<f32>().unwrap();
-                let y = words.next().unwrap().parse::<f32>().unwrap();
-                texs.push(vec![x, y]);
-            }
-            Some("f") => {
-                let mut face: Vec<VertIndicies> = Vec::new();
-                for word in words {
-                    let mut indices = word.split("/");
-                    let v = indices.next().unwrap().parse::<u32>().unwrap();
-                    let t = indices.next().unwrap().parse::<u32>().unwrap();
-                    let n = indices.next().unwrap().parse::<u32>().unwrap();
-                    face.push([v, t, n]);
-                }
-                indices.push(face[0]);
-                indices.push(face[1]);
-                indices.push(face[2]);
-            }
-            _ => {}
-        }
+pub fn mesh_from_obj(path: &Path) -> Mesh {
+    let (models,_) = tobj::load_obj(path, &tobj::LoadOptions::default()).unwrap();
+
+
+
+    Mesh{
+        vertices:Vec::new(),
+        indicies:Vec::new(),
+        vao: None,
+        vbo: None,
+        ebo: None,
     }
-    //Construct the mesh
-    let mut vertices: Vec<Vertex> = vec![Vertex::default(); positions.len()];
-
-    for i in 0..positions.len() {
-        vertices[i].0 = positions[i].as_slice().try_into().unwrap();
-    }
-
-    for i in 0..norms.len() {
-        vertices[i].1 = norms[i].as_slice().try_into().unwrap();
-    }
-
-    let mesh = Mesh::new(vertices, indices);
-
-    mesh
 }
 
 pub type VertIndicies = [u32; 3];
 
-#[derive(Copy, Clone)]
-pub struct Vertex(pub [f32; 3], pub [f32; 3], pub [f32; 2]); //Position, Normal, TextureCoords
-
-impl Default for Vertex {
-    fn default() -> Self {
-        Self([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0])
-    }
-}
-
-unsafe impl Pod for Vertex {}
-unsafe impl Zeroable for Vertex {}
+pub type Vertex=[f32; 3+2]; //Position, Normal, TextureCoords
 
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
-    pub indices: Vec<VertIndicies>,
+    pub indicies: Vec<VertIndicies>,
     pub vao: Option<VertexArray>,
     pub vbo: Option<Buffer>,
     pub ebo: Option<Buffer>,
@@ -277,7 +214,7 @@ impl Mesh {
     pub fn new(v: Vec<Vertex>, i: Vec<VertIndicies>) -> Self {
         Self {
             vertices: v,
-            indices: i,
+            indicies: i,
             vao: None,
             vbo: None,
             ebo: None,
@@ -288,17 +225,22 @@ impl Mesh {
         self.vao = Some(VertexArray::new().expect("Failed to create vertex array"));
         self.vao.unwrap().bind();
 
-        self.vbo = Some(Buffer::new(GL_STATIC_DRAW,GL_ARRAY_BUFFER).expect("Failed to create vertex buffer"));
+        self.vbo = Some(
+            Buffer::new(GL_STATIC_DRAW, GL_ARRAY_BUFFER).expect("Failed to create vertex buffer"),
+        );
         self.vbo.unwrap().bind();
-        self.vbo.unwrap().set_data(
-            cast_slice(self.vertices.as_slice()),
-        );
+        self.vbo
+            .unwrap()
+            .set_data(cast_slice(self.vertices.as_slice()));
 
-        self.ebo = Some(Buffer::new(GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER).expect("Failed to create element buffer"));
-        self.ebo.unwrap().bind();
-        self.ebo.unwrap().set_data(
-            cast_slice(self.indices.as_slice()),
+        self.ebo = Some(
+            Buffer::new(GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER)
+                .expect("Failed to create element buffer"),
         );
+        self.ebo.unwrap().bind();
+        self.ebo
+            .unwrap()
+            .set_data(cast_slice(self.indicies.as_slice()));
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(
@@ -313,16 +255,6 @@ impl Mesh {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(
             1,
-            3,
-            GL_FLOAT,
-            GL_FALSE,
-            std::mem::size_of::<Vertex>().try_into().unwrap(),
-            std::mem::size_of::<[f32;3]>() as *const _,
-        );
-
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(
-            2,
             2,
             GL_FLOAT,
             GL_FALSE,
@@ -331,5 +263,63 @@ impl Mesh {
         );
 
         self
+    }
+}
+
+pub struct Camera {
+    pub position: Vector3<f32>,
+    pub target: Vector3<f32>,
+    pub fov: f32,
+    pub aspect: [f32; 2],
+    pub near: f32,
+    pub far: f32,
+}
+
+impl Camera {
+    pub fn new(start_pos: Vector3<f32>, targ: Vector3<f32>) -> Self {
+        Self {
+            position: start_pos,
+            target: targ,
+            fov: 45.0,
+            aspect: [4.0, 3.0],
+            near: 0.1,
+            far: 100.0,
+        }
+    }
+
+    pub fn get_direction(&self) -> Vector3<f32> {
+        (self.target - self.position).normalize()
+    }
+
+    pub fn get_right(&self) -> Vector3<f32> {
+        self.get_direction()
+            .cross(Vector3::new(0.0, 1.0, 0.0))
+            .normalize()
+    }
+
+    pub fn get_up(&self) -> Vector3<f32> {
+        self.get_right().cross(self.get_direction()).normalize()
+    }
+
+    pub fn set_position(&mut self, pos: Vector3<f32>) {
+        self.position = pos;
+    }
+
+    pub fn get_view_matrix(&self) -> Matrix4<f32> {
+        let pos_p = Point3::new(self.position.x, self.position.y, self.position.z);
+        let target_p = Point3::new(self.target.x, self.target.y, self.target.z);
+        let up_v = self.get_up();
+        let up_p = Vector3::new(up_v.x, up_v.y, up_v.z);
+        Matrix4::look_at_rh(pos_p, target_p, up_p)
+    }
+
+    pub fn get_projection_matrix(&self) -> Matrix4<f32> {
+        cgmath::PerspectiveFov {
+            fovy: Deg(self.fov).into(),
+            aspect: self.aspect[0] / self.aspect[1],
+            near: self.near,
+            far: self.far,
+        }
+        .into()
     }
 }

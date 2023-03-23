@@ -12,7 +12,7 @@ beryllium = "0.2.0-alpha.4"
 imagine = "0.0.5"
 cgmath="0.18.0"
 cstr="0.2.11"
-
+tobj="3.2.4"
 
 #![feature(core_intrinsics)]
 #![feature(default_free_fn)]
