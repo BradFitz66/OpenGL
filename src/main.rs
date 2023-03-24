@@ -43,7 +43,7 @@ fn main() {
     win.set_swap_interval(SwapInterval::Immediate);
     let mut rect_mesh: Mesh;
     let mut shader_program;
-    let mut camera = Camera::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0));
+    let mut camera = Camera::new(Vector3::new(0.0, 1.0, 5.0), Vector3::new(0.0, 0.0, 0.0));
     let mut test = mesh_from_obj(Path::new("assets/models/monke.obj"));
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
@@ -77,7 +77,9 @@ fn main() {
         shader_program.create_uniform(cstr!("uni_color"));
         shader_program.create_uniform(cstr!("V"));
         shader_program.create_uniform(cstr!("M"));
-        shader_program.create_uniform(cstr!("sun_pos"));
+        shader_program.create_uniform(cstr!("light_pos"));
+
+
         glUseProgram(shader_program.0);
     }
 
@@ -95,20 +97,22 @@ fn main() {
         let transform = Matrix4::from_value(1.0);
         let rot_speed = 0.01;
         //Rotate camera around the triangle with a speed of rot_speed
-        camera.set_position(Vector3::new(
-            6.0 * (time * rot_speed).sin(),
-            0.0,
-            6.0 * (time * rot_speed).cos(),
-        ));
-
+        // camera.set_position(Vector3::new(
+        //     4.0 * (time * rot_speed).sin(),
+        //     2.0,
+        //     4.0 * (time * rot_speed).cos(),
+        // ));
+        //Ping pong a number between 0 and 1
+        let ping_pong = (time * 0.01).sin().abs();
+        let light_pos = Vector3::new(ping_pong, 1.0, 0.0);
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             let mvp = camera.get_projection_matrix() * camera.get_view_matrix() * transform;
             shader_program.set_mat4("MVP", &mvp);
-            shader_program.set_vec3("uni_color", &Vector3::new(1.0, 0.0, 0.0));
             shader_program.set_mat4("V", &camera.get_view_matrix());
             shader_program.set_mat4("M", &transform);
-            shader_program.set_vec3("sun_pos", &Vector3::new(3.0, 0.0, 0.0));
+            shader_program.set_vec3("light_pos", &light_pos);
+            shader_program.set_vec3("uni_color", &Vector3::new(0.0, 1.0, 0.0));    
             test.draw();
         }
         win.swap_window();

@@ -1,37 +1,23 @@
 #version 330 core
 
-uniform vec3 sun_pos;
+uniform vec3 light_pos;
 uniform vec3 uni_color;
 
-out vec3 final_color;
+out vec4 final_color;
+
 
 in vec2 tex_coord;
-in vec3 position_world;
-in vec3 normal_camera;
-in vec3 camera_dir;
-in vec3 light_dir;
+in vec3 norm;
+in vec3 frag_pos;
+
 
 void main() {
-    vec3 specular_color = vec3(1.0,1.0,1.0);
+    vec3 n = normalize(norm);
+    vec3 light_dir = normalize(light_pos - frag_pos);
 
+    float diff = max(dot(n, light_dir), 0.0);
+    vec3 diffuse = diff * vec3(1.0, 1.0, 1.0);
+    vec3 result = diffuse * uni_color;
 
-    //Should put these as uniforms or make some sort of light struct
-    vec3 light_color = vec3(1.0,1.0,1.0);
-    float light_intensity = 200.0;
-    float light_distance = length(sun_pos - position_world);
-
-    vec3 n = normalize(normal_camera);
-    vec3 l = normalize(light_dir);
-
-    float cos_theta = clamp(dot(n,l),0.01,1);
-
-    vec3 E = normalize(camera_dir);
-    vec3 R = reflect(-l,n);
-
-    float cos_alpha = clamp(dot(E,R),0.01,1);
-
-    final_color = 
-    uni_color * light_color * light_intensity * cos_theta / (light_distance * light_distance) +
-    specular_color * light_color * light_intensity * pow(cos_alpha, 5) / (light_distance * light_distance);
-
+    final_color = vec4(diff,diff,diff,1.0);
 }
