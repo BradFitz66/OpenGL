@@ -8,9 +8,10 @@ Will probably contain horrific code.
 Goals:
 - [x] Get a basic window up and running
 - [x] Draw a triangle
-- [ ] Draw a cube
-- [ ] .obj file parsing
-- [ ] Draw meshes from .obj files
+- [x] Draw a cube
+- [x] .obj file parsing (Provided by TinyOBJ, not my own parser)
+- [x] Draw meshes from .obj files
+- [x] High level abstractions for stuff like objects (something with a mesh and a transform) and scenes (a collection of objects)
 
 Stretch goals:
 - [ ] Textures
