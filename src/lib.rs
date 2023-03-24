@@ -4,6 +4,7 @@ use __core::ops::Deref;
 use bytemuck::*;
 use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3};
 use ogl33::*;
+
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
@@ -67,7 +68,7 @@ impl VertexArray {
         }
     }
 
-    pub unsafe fn unbind() {
+    pub unsafe fn unbind(&self) {
         glBindVertexArray(0);
     }
 
@@ -194,33 +195,49 @@ unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u3
 
 //Parse an obj file and return a mesh (HEAVILY WIP)
 pub fn mesh_from_obj(path: &Path) -> Mesh {
-    let (models, _) = tobj::load_obj(path, &tobj::LoadOptions::default()).unwrap();
-    let mut vertices: Vec<Vertex> = Vec::new();
-    let mut indicies: Vec<VertIndicies> = Vec::new();
+    let (models, _) = tobj::load_obj(path, &tobj::LoadOptions{
+        triangulate: true,
+        single_index: true,
+        ..Default::default()
+    }).unwrap();
     let mesh = &models[0].mesh;
 
-    //Creates a Vec<Vec<f32>> (where each Vec<f32> has a length of 3)
+    //Convert normals from Vec<f32> to Vec<[f32;3]>
+    let vertex_normals: Vec<[f32;3]> = 
+        mesh
+        .normals
+        .chunks(3)
+        .map(|chunk|  TryInto::<[f32; 3]>::try_into(chunk).unwrap())
+        .collect();
+
+
+    //Kinda ugly
+    //Convert vertex_positions from Vec<[f32;3]> to Vec<[f32;8]> (since type Vertex is [f32;3+3+2])
     let vertex_positions:Vec<Vertex> = models[0]
         .mesh
         .positions
         .chunks(3)
         .map(|chunk| TryInto::<[f32; 3]>::try_into(chunk).unwrap())
         .into_iter()
-        .map(|chunk| {
+        .zip(vertex_normals)
+        .map(|(chunk_pos, chunk_normals)| {
             let mut result = [0.0; 8];
-            result[..3].copy_from_slice(&chunk);
+            
+            result[0..3].copy_from_slice(&chunk_pos);
+            //Put normal info in
+            result[3..6].copy_from_slice(&chunk_normals);
             result
         })
         .collect();
-
+    
+    
+    //Convert vertex_positions from Vec<u32> to Vec<[u32;3]>
     let vertex_indices:Vec<VertIndicies> = models[0]
         .mesh
         .indices
         .chunks(3)
         .map(|chunk| TryInto::<[u32; 3]>::try_into(chunk).unwrap())
         .collect();
-
-    //Convert vertex_positions from Vec<[f32;8]> to Vec<Vertex>
 
     Mesh {
         vertices: vertex_positions,
@@ -256,20 +273,24 @@ impl Mesh {
 
     pub unsafe fn setup(&mut self) -> &Self {
         self.vao = Some(VertexArray::new().expect("Failed to create vertex array"));
-        self.vao.unwrap().bind();
 
         self.vbo = Some(
             Buffer::new(GL_STATIC_DRAW, GL_ARRAY_BUFFER).expect("Failed to create vertex buffer"),
         );
-        self.vbo.unwrap().bind();
-        self.vbo
-            .unwrap()
-            .set_data(cast_slice(self.vertices.as_slice()));
 
         self.ebo = Some(
             Buffer::new(GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER)
                 .expect("Failed to create element buffer"),
         );
+
+        //self.vao, and the other buffers, are an Option so we need to unwrap it
+        self.vao.unwrap().bind();
+        self.vbo.unwrap().bind();
+        
+        self.vbo
+            .unwrap()
+            .set_data(cast_slice(self.vertices.as_slice()));
+
         self.ebo.unwrap().bind();
         self.ebo
             .unwrap()
@@ -284,8 +305,7 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::ptr::null(),
         );
-
-        glEnableVertexAttribArray(1);
+        
         glVertexAttribPointer(
             1,
             3,
@@ -294,6 +314,7 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 3]>() as *const _,
         );
+        glEnableVertexAttribArray(1);
 
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(
@@ -305,17 +326,22 @@ impl Mesh {
             std::mem::size_of::<[f32; 6]>() as *const _,
         );
 
+        self.vao.unwrap().unbind();
+
         self
     }
     pub fn draw(&self) {
         unsafe {
             //Print the combined lengths of the vertices and indicies
+
+            self.vao.unwrap().bind();
             glDrawElements(
                 GL_TRIANGLES,
                 self.indicies.len() as i32 * 3,
                 GL_UNSIGNED_INT,
                 std::ptr::null(),
             );
+            self.vao.unwrap().unbind();            
         }
     }
 }
