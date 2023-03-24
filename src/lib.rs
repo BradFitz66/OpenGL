@@ -2,7 +2,7 @@
 
 use __core::ops::Deref;
 use bytemuck::*;
-use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3};
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3, Transform, Quaternion, SquareMatrix};
 use ogl33::*;
 
 use std::{
@@ -245,6 +245,67 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
         vao: None,
         vbo: None,
         ebo: None,
+    }
+}
+
+
+pub struct Scene{
+    pub objects: Vec<Object>,
+}
+
+impl Scene{
+    pub fn new() -> Self{
+        Self{
+            objects: Vec::new(),
+        }
+    }
+
+    pub fn add_object(&mut self, object: Object){
+        self.objects.push(object);
+    }
+
+    pub fn update_model_matrices(&mut self){
+        for mesh in self.objects.iter_mut(){
+            mesh.update_model_matrix();
+        }
+    }
+
+    pub fn draw(&self){
+        for object in self.objects.iter(){
+            object.mesh.draw();
+        }
+    }
+
+    pub unsafe fn setup(&mut self){
+        for object in self.objects.iter_mut(){
+            object.mesh.setup();
+        }
+    }
+}
+
+//High level object that contains a mesh and a transform
+pub struct Object{
+    pub mesh: Mesh,
+    pub position: Vector3<f32>,
+    pub rotation: Quaternion<f32>,
+    pub scale: Vector3<f32>,
+
+    pub model_matrix: Matrix4<f32>,
+}
+
+impl Object{
+    pub fn new(mesh: Mesh) -> Self{
+        Self{
+            mesh,
+            position: Vector3::new(0.0, 0.0, 0.0),
+            rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
+            scale: Vector3::new(1.0, 1.0, 1.0),
+            model_matrix: Matrix4::identity(),
+        }
+    }
+
+    pub fn update_model_matrix(&mut self){
+        self.model_matrix = Matrix4::from_translation(self.position) * Matrix4::from(self.rotation) * Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z);
     }
 }
 
