@@ -110,6 +110,7 @@ fn main() {
         shader_program.create_uniform(cstr!("directional_light.color"));
         
         glUseProgram(shader_program.0);
+
     }
 
     'main_loop: loop {

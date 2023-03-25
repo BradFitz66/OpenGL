@@ -12,12 +12,10 @@ uniform mat4 V;
 uniform mat4 M;
 uniform vec3 V_P; //view position
 
-
 out vec2 tex_coord;
 out vec3 norm;
 out vec3 frag_pos;
 out vec3 view_pos;
-
 
 void main() {
 
