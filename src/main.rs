@@ -7,6 +7,7 @@
 const WINDOW_TITLE: &str = "'Hello world!' said the triangle";
 
 use beryllium::*;
+use bytemuck::bytes_of;
 use core::{
     convert::{TryFrom, TryInto},
     mem::{size_of, size_of_val},
@@ -18,12 +19,6 @@ use cstr::*;
 use ogl33::*;
 use std::ffi::CStr;
 use std::{any::Any, ffi::CString, path::Path};
-
-// // Loops the value t, so that it is never larger than length and never smaller than 0.
-// public static float Repeat(float t, float length)
-// {
-//     return Clamp(t - Mathf.Floor(t / length) * length, 0.0f, length);
-// }
 
 
 //Ping pong a number between a min and max value
@@ -38,6 +33,24 @@ fn ping_pong(t: f32, min: f32, max: f32) -> f32 {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PointLight {
+    position: Vector4<f32>,
+    color: Vector4<f32>,
+}
+
+impl Default for PointLight {
+    fn default() -> Self {
+        Self {
+            position: Vector4::new(0.0, 0.0, 0.0,0.0),
+            color: Vector4::new(1.0, 1.0, 1.0,0.0),
+        }
+    }
+}
+
+//Implement the bytemuck trait for the Light struct
+unsafe impl bytemuck::Zeroable for PointLight {}
+unsafe impl bytemuck::Pod for PointLight {}
 
 fn main() {
     let sdl = SDL::init(InitFlags::Everything).expect("couldn't start SDL");
@@ -61,23 +74,18 @@ fn main() {
         )
         .expect("couldn't make a window and context");
     win.set_swap_interval(SwapInterval::Immediate);
-    let mut rect_mesh: Mesh;
     let mut shader_program;
-    let mut camera = Camera::new(Vector3::new(0.0, 2.0, 5.0), Vector3::new(0.0, 0.0, 0.0));
-    let mut test_scene = Scene::new();
-    let plane_object = Object::new(mesh_from_obj(Path::new("assets/models/plane.obj")));
-    let monke_object = Object::new(mesh_from_obj(Path::new("assets/models/sphere.obj")));
-
-    test_scene.add_object(plane_object);
-    test_scene.add_object(monke_object);
-
+    let camera = Camera::new(Vector3::new(0.0, 2.0, 5.0), Vector3::new(0.0, 0.0, 0.0));
+    let mut plane_object = Object::new(mesh_from_obj(Path::new("assets/models/plane.obj")));
+    let mut sphere_object = Object::new(mesh_from_obj(Path::new("assets/models/sphere.obj")));
 
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
         glClearColor(0.392, 0.584, 0.929, 1.0);
         glEnable(GL_DEPTH_TEST);
 
-        test_scene.setup();
+        sphere_object.mesh.setup();
+        plane_object.mesh.setup();
 
         shader_program = ShaderProgramBuilder::new()
             .create_shader(ShaderType::Vertex, &shader_from_file(Path::new("assets/shaders/vertex_shader.vert")))
@@ -86,16 +94,22 @@ fn main() {
             .unwrap();
 
         shader_program.create_uniform(cstr!("MVP"));
-        shader_program.create_uniform(cstr!("uni_color"));
         shader_program.create_uniform(cstr!("V"));
         shader_program.create_uniform(cstr!("M"));
         shader_program.create_uniform(cstr!("M_V"));
-        shader_program.create_uniform(cstr!("light_pos"));
-        shader_program.create_uniform(cstr!("light_color"));
-
-
+        shader_program.create_uniform(cstr!("V_P"));
+        shader_program.create_uniform(cstr!("albedo"));
+        shader_program.create_uniform(cstr!("metallic"));
+        shader_program.create_uniform(cstr!("roughness"));
+        shader_program.create_uniform(cstr!("ao"));
+        shader_program.create_uniform(cstr!("lights[0].position"));
+        shader_program.create_uniform(cstr!("lights[0].color"));
+        shader_program.create_uniform(cstr!("lights[1].position"));
+        shader_program.create_uniform(cstr!("lights[1].color"));
+        shader_program.create_uniform(cstr!("directional_light.direction"));
+        shader_program.create_uniform(cstr!("directional_light.color"));
+        
         glUseProgram(shader_program.0);
-
     }
 
     'main_loop: loop {
@@ -109,29 +123,37 @@ fn main() {
             }
         }
         let time = sdl.get_ticks() as f32 / 10.0_f32;
-        let transform = Matrix4::from_value(1.0);
-        let rot_speed = 0.01;
-        //Rotate camera around the triangle with a speed of rot_speed
-        // camera.set_position(Vector3::new(
-        //     4.0 * (time * rot_speed).sin(),
-        //     2.0,
-        //     4.0 * (time * rot_speed).cos(),
-        // ));
-        //Ping pong a number between 0 and 1
+        let mut transform = Matrix4::from_value(1.0);
+
         let ping_pong = ping_pong(time*0.01, -1.0, 1.0);
-        let light_pos = Vector3::new(ping_pong, 1.0, 0.0);
         
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            let mvp = camera.get_projection_matrix() * camera.get_view_matrix() * transform;
+            let mut mvp = camera.get_projection_matrix() * camera.get_view_matrix() * transform;
             shader_program.set_mat4("MVP", &mvp);
             shader_program.set_mat4("V", &camera.get_view_matrix());
             shader_program.set_mat4("M", &transform);
             shader_program.set_vec3("M_V", &camera.position);
-            shader_program.set_vec3("light_pos", &light_pos);
-            shader_program.set_vec3("uni_color", &Vector3::new(1.0, 1.0, 0.0));  
-            shader_program.set_vec3("light_color", &Vector3::new(0.0,1.0,0.0));
-            test_scene.draw();
+            shader_program.set_vec3("albedo", &Vector3::new(1.0, 0.0, 0.0));
+            shader_program.set_float("metallic", 0.0);
+            shader_program.set_float("roughness", 1.0);
+            shader_program.set_vec4("directional_light.direction", &Vector4::new(ping_pong, 1.0, 0.0, 0.0));
+            shader_program.set_vec4("directional_light.color", &Vector4::new(1.0, 1.0, 1.0, 1.0));
+
+            shader_program.set_vec4("lights[0].position", &Vector4::new(ping_pong, 0.0, 1.0, 1.0));
+            shader_program.set_vec4("lights[0].color", &Vector4::new(0.0, 0.0, 1.0,1.0));
+            
+            shader_program.set_vec4("lights[1].position", &Vector4::new(ping_pong, 0.0, -1.0, 1.0));
+            shader_program.set_vec4("lights[1].color", &Vector4::new(1.0, 0.0, 0.0,1.0));
+
+            sphere_object.mesh.draw();
+
+            transform = Matrix4::from_translation(Vector3::new(ping_pong, 0.0, 0.0));
+            mvp = camera.get_projection_matrix() * camera.get_view_matrix() * transform;
+
+            shader_program.set_mat4("MVP", &mvp);
+            shader_program.set_vec3("albedo", &Vector3::new(0.0, 1.0, 0.0));
+            plane_object.mesh.draw();
         }
         win.swap_window();
         let msec = sdl.get_ticks() - frame_start;

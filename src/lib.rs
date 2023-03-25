@@ -77,6 +77,56 @@ impl VertexArray {
     }
 }
 
+
+//Wrapper for a opengl texture
+#[derive(Clone)]
+pub struct Texture(pub GLuint);
+
+impl Texture {
+    pub unsafe fn new(textureType:GLenum) -> Option<Self> {
+        let mut texture = 0;
+        glGenTextures(1, &mut texture);
+
+        if texture == 0 {
+            None
+        } else {
+            Some(Self(texture))
+        }
+    }
+
+    pub unsafe fn bind(&self) {
+        glBindTexture(GL_TEXTURE_2D, self.0);
+    }
+
+    pub unsafe fn unbind(&self) {
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    pub unsafe fn set_data(&self, data: &[u8], width: i32, height: i32) {
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA as i32,
+            width,
+            height,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            data.as_ptr() as *const _,
+        );
+    }
+
+    pub unsafe fn set_filter(&self, filter: GLenum) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter as i32);
+    }
+
+    pub unsafe fn set_wrap(&self, wrap: GLenum) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap as i32);
+    }
+}
+
 pub enum ShaderType {
     Vertex = GL_VERTEX_SHADER as isize,
     Fragment = GL_FRAGMENT_SHADER as isize,
@@ -85,15 +135,22 @@ pub enum ShaderType {
 pub struct ShaderProgramBuilder {
     id: GLuint,
     uniforms: HashMap<String, GLint>,
+    uniformblocks: HashMap<String, GLuint>,
 }
 
 //Wrapper for opengl shader programs (uses builder pattern)
-pub struct ShaderProgram(pub GLuint, pub HashMap<String, GLint>); //Program, Uniforms
+pub struct ShaderProgram(pub GLuint, pub HashMap<String, GLint>, pub HashMap<String,GLuint>); //Program, Uniforms, UniformBlocks
 
 impl ShaderProgram {
     pub unsafe fn create_uniform(&mut self, name: &CStr) {
         let uniform_location = glGetUniformLocation(self.0, name.as_ptr());
         self.1
+        .insert(name.to_str().unwrap().to_string(), uniform_location);
+    }
+
+    pub unsafe fn create_uniformblock(&mut self, name: &CStr) {
+        let uniform_location = glGetUniformBlockIndex(self.0, name.as_ptr());
+        self.2
         .insert(name.to_str().unwrap().to_string(), uniform_location);
     }
     
@@ -114,6 +171,16 @@ impl ShaderProgram {
     pub unsafe fn set_vec4(&self, name: &str, vec: &cgmath::Vector4<f32>) {
         glUniform4f(self.1[name], vec.x, vec.y, vec.z, vec.w);
     }
+
+    pub unsafe fn set_float(&self, name: &str, val: f32) {
+        glUniform1f(self.1[name], val);
+    }
+
+    pub unsafe fn set_int(&self, name: &str, val: i32) {
+        glUniform1i(self.1[name], val);
+    }
+
+
 }
 
 impl ShaderProgramBuilder {
@@ -122,6 +189,7 @@ impl ShaderProgramBuilder {
             Self {
                 id: glCreateProgram(),
                 uniforms: HashMap::new(),
+                uniformblocks: HashMap::new(),
             }
         }
     }
@@ -154,7 +222,7 @@ impl ShaderProgramBuilder {
                 );
             }
 
-            Some(ShaderProgram(self.id, self.uniforms.clone()))
+            Some(ShaderProgram(self.id, self.uniforms.clone(),self.uniformblocks.clone()))
         }
     }
 }
@@ -210,7 +278,12 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
         .map(|chunk|  TryInto::<[f32; 3]>::try_into(chunk).unwrap())
         .collect();
 
-
+    let vertex_texcoords: Vec<[f32;2]> = 
+        mesh
+        .texcoords
+        .chunks(2)
+        .map(|chunk|  TryInto::<[f32; 2]>::try_into(chunk).unwrap())
+        .collect();
     //Kinda ugly
     //Convert vertex_positions from Vec<[f32;3]> to Vec<[f32;8]> (since type Vertex is [f32;3+3+2])
     let vertex_positions:Vec<Vertex> = models[0]
@@ -220,12 +293,14 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
         .map(|chunk| TryInto::<[f32; 3]>::try_into(chunk).unwrap())
         .into_iter()
         .zip(vertex_normals)
-        .map(|(chunk_pos, chunk_normals)| {
+        .map(|(chunk_pos,chunk_normal)| {
             let mut result = [0.0; 8];
             
             result[0..3].copy_from_slice(&chunk_pos);
             //Put normal info in
-            result[3..6].copy_from_slice(&chunk_normals);
+            result[3..6].copy_from_slice(&chunk_normal);
+            //Put texcoord info in
+            // result[6..8].copy_from_slice(chunk_tex);
             result
         })
         .collect();
