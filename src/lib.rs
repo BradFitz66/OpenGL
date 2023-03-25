@@ -298,7 +298,7 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
             
             result[0..3].copy_from_slice(&chunk_pos);
             //Put normal info in
-            result[3..6].copy_from_slice(&chunk_normals);
+            result[3..6].copy_from_slice(&chunk_normal);
             result
         })
         .collect();
