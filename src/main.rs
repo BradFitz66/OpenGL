@@ -173,6 +173,7 @@ fn main() {
         shader_program.create_uniform(cstr!("roughness_map"));
 
         glUseProgram(shader_program.0);
+
     }
 
     'main_loop: loop {

@@ -441,8 +441,7 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::ptr::null(),
         );
-
-        glEnableVertexAttribArray(1);
+        
         glVertexAttribPointer(
             1,
             3,
@@ -451,6 +450,7 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 3]>() as *const _,
         );
+        glEnableVertexAttribArray(1);
 
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(
