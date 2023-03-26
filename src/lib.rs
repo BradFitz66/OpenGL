@@ -14,6 +14,7 @@ use std::{
     io::{prelude::*, BufReader},
     path::Path,
 };
+use multizip::zip3;
 
 //Wrapper for opengl buffer objects
 #[derive(Clone, Copy)]
@@ -80,10 +81,10 @@ impl VertexArray {
 
 //Wrapper for a opengl texture
 #[derive(Clone)]
-pub struct Texture(pub GLuint);
+pub struct Texture2D(pub GLuint);
 
-impl Texture {
-    pub unsafe fn new(textureType:GLenum) -> Option<Self> {
+impl Texture2D {
+    pub unsafe fn new() -> Option<Self> {
         let mut texture = 0;
         glGenTextures(1, &mut texture);
 
@@ -285,25 +286,26 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
         .map(|chunk|  TryInto::<[f32; 2]>::try_into(chunk).unwrap())
         .collect();
     //Kinda ugly
+
     //Convert vertex_positions from Vec<[f32;3]> to Vec<[f32;8]> (since type Vertex is [f32;3+3+2])
-    let vertex_positions:Vec<Vertex> = models[0]
+    //Range 0..3 is position, 3..6 is normal, 6..8 is texcoord
+    let vertices:Vec<Vertex> = models[0]
         .mesh
         .positions
         .chunks(3)
         .map(|chunk| TryInto::<[f32; 3]>::try_into(chunk).unwrap())
         .into_iter()
-        .zip(vertex_normals)
-        .map(|(chunk_pos,chunk_normal)| {
+        .zip(vertex_normals.into_iter()) 
+        .zip(vertex_texcoords.into_iter())
+        .map(|((chunk_pos,chunk_normal),chunk_tex)| {
             let mut result = [0.0; 8];
-            
             result[0..3].copy_from_slice(&chunk_pos);
-            //Put normal info in
             result[3..6].copy_from_slice(&chunk_normal);
+            result[6..8].copy_from_slice(&chunk_tex);
             result
         })
         .collect();
-    
-    
+
     //Convert vertex_positions from Vec<u32> to Vec<[u32;3]>
     let vertex_indices:Vec<VertIndicies> = models[0]
         .mesh
@@ -313,7 +315,7 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
         .collect();
 
     Mesh {
-        vertices: vertex_positions,
+        vertices,
         indicies: vertex_indices,
         vao: None,
         vbo: None,
@@ -439,7 +441,8 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::ptr::null(),
         );
-        
+
+        glEnableVertexAttribArray(1);
         glVertexAttribPointer(
             1,
             3,
@@ -448,7 +451,6 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 3]>() as *const _,
         );
-        glEnableVertexAttribArray(1);
 
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(

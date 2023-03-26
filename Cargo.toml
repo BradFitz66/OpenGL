@@ -10,11 +10,11 @@ bytemuck="1.13.1"
 ogl33 = { version = "0.2.0", features = ["debug_error_checks"]}
 
 beryllium = "0.2.0-alpha.4"
-imagine = "0.0.5"
+imagine = "0.4.0"
 cgmath="0.18.0"
 cstr="0.2.11"
 tobj="3.2.4"
-itertools = "0.10.5"
+multizip = "0.1.0"
 
 #![feature(core_intrinsics)]
 #![feature(default_free_fn)]
