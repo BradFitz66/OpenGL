@@ -14,8 +14,9 @@ Goals:
 - [x] High level abstractions for stuff like objects (something with a mesh and a transform) and scenes (a collection of objects)
 
 Stretch goals:
-- [ ] Textures
+- [x] Textures
 - [ ] Lighting
+  - [ ] Shadowmapping
 - [ ] PBR rendering 
 
 
