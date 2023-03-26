@@ -73,14 +73,12 @@ fn main() {
     win.set_swap_interval(SwapInterval::Immediate);
     let mut shader_program;
 
-    let camera = Camera::new(Vector3::new(0.0, 2.0, 5.0), Vector3::new(0.0, 0.0, 0.0));
+    let camera = Camera::new(Vector3::new(0.0, 1.0, 3.0), Vector3::new(0.0, 0.0, 0.0));
 
     let mut plane_object = Object::new(mesh_from_obj(Path::new("assets/models/plane.obj")));
-    let mut sphere_object = Object::new(mesh_from_obj(Path::new("assets/models/sphere.obj")));
+    let mut sphere_object = Object::new(mesh_from_obj(Path::new("assets/models/StandfordDragon.obj")));
 
-    let mut texture = 0;
-
-    let bitmap = {
+    let bitmap_diffuse = {
         let mut f =
             std::fs::File::open(Path::new("assets/textures/Tiles094_1K_Color.png")).unwrap();
         let mut bytes = vec![];
@@ -90,6 +88,18 @@ fn main() {
         bitmap
     };
 
+    let bitmap_roughness = {
+        let mut f =
+            std::fs::File::open(Path::new("assets/textures/Tiles094_1K_Roughness.png")).unwrap();
+        let mut bytes = vec![];
+        std::io::Read::read_to_end(&mut f, &mut bytes).unwrap();
+        let bitmap = Bitmap::<RGBA8888>::try_from_png_bytes(&bytes).unwrap();
+
+        bitmap
+    };
+    let mut diffuse_texture = 0;
+    let mut roughness_texture = 0;
+
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
         glClearColor(0.392, 0.584, 0.929, 1.0);
@@ -98,9 +108,11 @@ fn main() {
         sphere_object.mesh.setup();
         plane_object.mesh.setup();
 
+    
         //ToDo: Wrapper for glGenTextures
-        glGenTextures(1, &mut texture);
-        glBindTexture(GL_TEXTURE_2D, texture);
+        glGenTextures(1, &mut diffuse_texture);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, diffuse_texture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT as i32);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT as i32);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
@@ -114,9 +126,30 @@ fn main() {
             0,
             GL_RGBA,
             GL_UNSIGNED_BYTE,
-            bitmap.pixels.as_ptr().cast(),
+            bitmap_diffuse.pixels.as_ptr().cast(),
         );
         glGenerateMipmap(GL_TEXTURE_2D);
+
+        glGenTextures(1, &mut roughness_texture);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, roughness_texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR as i32);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_R8 as GLint,
+            1024,
+            1024,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            bitmap_roughness.pixels.as_ptr().cast(),
+        );
+        glGenerateMipmap(GL_TEXTURE_2D);
+        
 
         shader_program = ShaderProgramBuilder::new()
             .create_shader(
@@ -136,6 +169,8 @@ fn main() {
         shader_program.create_uniform(cstr!("roughness"));
         shader_program.create_uniform(cstr!("metallic"));
         shader_program.create_uniform(cstr!("camera_pos"));
+        shader_program.create_uniform(cstr!("diffuse_map"));
+        shader_program.create_uniform(cstr!("roughness_map"));
 
         glUseProgram(shader_program.0);
     }
@@ -163,11 +198,15 @@ fn main() {
             shader_program.set_mat4("V", &camera.get_view_matrix());
             shader_program.set_mat4("P", &camera.get_projection_matrix());
             shader_program.set_vec3("camera_pos", &camera.position);
-            shader_program.set_vec3("albedo", &Vector3::new(1.0,0.0,0.0));
+            shader_program.set_vec3("albedo", &Vector3::new(1.0,1.0,1.0));
             shader_program.set_float("roughness", roughness_pingpong);
+
+            shader_program.set_int("diffuse_map", 0);
+            shader_program.set_int("roughness_map", 1);
+
             sphere_object.mesh.draw();
 
-            shader_program.set_vec3("albedo", &Vector3::new(0.0,1.0,0.0));
+            shader_program.set_vec3("albedo", &Vector3::new(1.0,1.0,1.0));
             plane_object.mesh.draw();
         }
         win.swap_window();

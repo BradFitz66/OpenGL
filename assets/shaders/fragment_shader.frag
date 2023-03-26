@@ -16,7 +16,9 @@ uniform vec3 albedo;
 uniform float roughness;
 uniform float metallic;
 
-uniform sampler2D tex;
+//Texture maps
+uniform sampler2D diffuse_map;
+uniform sampler2D roughness_map;
 
 
 in Vertex{
@@ -48,7 +50,7 @@ pbr_material make_pbr_material() {
 
     mat.albedo=albedo;
     mat.metallic=metallic;
-    mat.roughness=roughness;
+    mat.roughness=roughness*texture(roughness_map,i.uv).r;
     mat.f0=mix(vec3(0.04),mat.albedo,mat.metallic);
     mat.a=mat.roughness*mat.roughness;
     mat.k=((mat.roughness+1) * (mat.roughness+1))/8;
@@ -132,8 +134,8 @@ void main(){
 
     float NdotL = max(dot(ms.n,ms.l),0.0);
     vec3 Lo = M_PI * brdf(mat,ms) * NdotL * vec3(1.0,1.0,1.0);
-    vec3 ambient = vec3(0.03)*mat.albedo;
+    vec3 ambient = vec3(0.1)*mat.albedo;
     vec3 color_HDR = ambient + Lo;
-    vec3 final = color_HDR * texture(tex,i.uv).rgb;
+    vec3 final = color_HDR * texture(diffuse_map,i.uv).rgb;
     o_color = vec4(final,1.0);
 }
