@@ -8,11 +8,11 @@ const WINDOW_TITLE: &str = "'Hello world!' said the triangle";
 
 use beryllium::*;
 use bytemuck::bytes_of;
-use imagine::{pixel_formats::RGBA8888, image::Bitmap};
 use core::{
     convert::{TryFrom, TryInto},
     mem::{size_of, size_of_val},
 };
+use imagine::{image::Bitmap, pixel_formats::RGBA8888};
 use OpenGL::*;
 
 use cgmath::{num_traits::clamp, *};
@@ -54,16 +54,11 @@ unsafe impl bytemuck::Pod for PointLight {}
 
 fn main() {
     let sdl = SDL::init(InitFlags::Everything).expect("couldn't start SDL");
+
     sdl.gl_set_attribute(SdlGlAttr::MajorVersion, 4).unwrap();
     sdl.gl_set_attribute(SdlGlAttr::MinorVersion, 3).unwrap();
     sdl.gl_set_attribute(SdlGlAttr::Profile, GlProfile::Core)
         .unwrap();
-
-    #[cfg(target_os = "macos")]
-    {
-        sdl.gl_set_attribute(SdlGlAttr::Flags, ContextFlag::ForwardCompatible)
-            .unwrap();
-    }
 
     let mut win = sdl
         .create_gl_window(
@@ -74,24 +69,27 @@ fn main() {
             WindowFlags::Shown,
         )
         .expect("couldn't make a window and context");
+
     win.set_swap_interval(SwapInterval::Immediate);
     let mut shader_program;
+
     let camera = Camera::new(Vector3::new(0.0, 2.0, 5.0), Vector3::new(0.0, 0.0, 0.0));
+
     let mut plane_object = Object::new(mesh_from_obj(Path::new("assets/models/plane.obj")));
     let mut sphere_object = Object::new(mesh_from_obj(Path::new("assets/models/sphere.obj")));
+
     let mut texture = 0;
-    //Create a 2048x2048 array of pixels with the color blue
-    let pixels:Vec<u8> = vec![1; 2048 * 2048 * 3];
-    
+
     let bitmap = {
-        let mut f = std::fs::File::open(Path::new("assets/textures/Tiles094_1K_Color.png")).unwrap();
+        let mut f =
+            std::fs::File::open(Path::new("assets/textures/Tiles094_1K_Color.png")).unwrap();
         let mut bytes = vec![];
         std::io::Read::read_to_end(&mut f, &mut bytes).unwrap();
-        let mut bitmap = Bitmap::<RGBA8888>::try_from_png_bytes(&bytes).unwrap();
-        
+        let bitmap = Bitmap::<RGBA8888>::try_from_png_bytes(&bytes).unwrap();
+
         bitmap
     };
-    
+
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
         glClearColor(0.392, 0.584, 0.929, 1.0);
@@ -99,6 +97,8 @@ fn main() {
 
         sphere_object.mesh.setup();
         plane_object.mesh.setup();
+
+        //ToDo: Wrapper for glGenTextures
         glGenTextures(1, &mut texture);
         glBindTexture(GL_TEXTURE_2D, texture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT as i32);
@@ -132,6 +132,10 @@ fn main() {
         shader_program.create_uniform(cstr!("M"));
         shader_program.create_uniform(cstr!("V"));
         shader_program.create_uniform(cstr!("P"));
+        shader_program.create_uniform(cstr!("albedo"));
+        shader_program.create_uniform(cstr!("roughness"));
+        shader_program.create_uniform(cstr!("metallic"));
+        shader_program.create_uniform(cstr!("camera_pos"));
 
         glUseProgram(shader_program.0);
     }
@@ -147,18 +151,23 @@ fn main() {
             }
         }
         let time = sdl.get_ticks() as f32 / 10.0_f32;
-        let ping_pong = ping_pong(time*0.01, -1.0, 1.0);
-        let mut transform;
+        let translation_pingpong = ping_pong(time * 0.01, -1.0, 1.0);
+        let roughness_pingpong = ping_pong(time * 0.01, 0.0, 1.0);
+        let transform;
 
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
             transform = Matrix4::from_translation(Vector3::new(0.0, 0.0, 0.0));
-            shader_program.set_mat4("M",&transform);
-            shader_program.set_mat4("V",&camera.get_view_matrix());
-            shader_program.set_mat4("P",&camera.get_projection_matrix());
+            shader_program.set_mat4("M", &transform);
+            shader_program.set_mat4("V", &camera.get_view_matrix());
+            shader_program.set_mat4("P", &camera.get_projection_matrix());
+            shader_program.set_vec3("camera_pos", &camera.position);
+            shader_program.set_vec3("albedo", &Vector3::new(1.0,0.0,0.0));
+            shader_program.set_float("roughness", roughness_pingpong);
             sphere_object.mesh.draw();
-            transform = Matrix4::from_translation(Vector3::new(ping_pong, 0.0, 0.0));
-            shader_program.set_mat4("M",&transform);
+
+            shader_program.set_vec3("albedo", &Vector3::new(0.0,1.0,0.0));
             plane_object.mesh.draw();
         }
         win.swap_window();
