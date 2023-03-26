@@ -1,8 +1,5 @@
-#![feature(unsized_locals)]
-
-use __core::ops::Deref;
 use bytemuck::*;
-use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3, Transform, Quaternion, SquareMatrix};
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3, Quaternion, SquareMatrix, Rotation3, Rad};
 use ogl33::*;
 
 use std::{
@@ -11,10 +8,59 @@ use std::{
 };
 use std::{
     fs::File,
-    io::{prelude::*, BufReader},
+    io::{prelude::*},
     path::Path,
 };
-use multizip::zip3;
+
+
+//Wrapper for opengl textures
+#[derive(Clone)]
+pub struct Texture2D(pub GLuint);
+
+impl Texture2D {
+    pub unsafe fn new(texture_unit: GLenum) -> Option<Self> {
+        let mut texture = 0;
+        glGenTextures(1, &mut texture);
+        glActiveTexture(texture_unit);
+        if texture == 0 {
+            None
+        } else {
+            Some(Self(texture))
+        }
+    }
+
+    pub unsafe fn bind(&self) {
+        glBindTexture(GL_TEXTURE_2D, self.0);
+    }
+
+    pub unsafe fn unbind(&self) {
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    pub unsafe fn set_data(&self, data: &[u8], width: i32, height: i32, format: GLenum, internal_format: GLint, type_: GLenum) {
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            internal_format,
+            width,
+            height,
+            0,
+            format,
+            type_,
+            data.as_ptr() as *const _,
+        );
+    }
+
+    pub unsafe fn set_filter(&self, filter: GLenum) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter as i32);
+    }
+
+    pub unsafe fn set_wrap(&self, wrap: GLenum) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap as i32);
+    }
+}
 
 //Wrapper for opengl buffer objects
 #[derive(Clone, Copy)]
@@ -75,56 +121,6 @@ impl VertexArray {
 
     pub unsafe fn bind(&self) {
         glBindVertexArray(self.0);
-    }
-}
-
-
-//Wrapper for a opengl texture
-#[derive(Clone)]
-pub struct Texture2D(pub GLuint);
-
-impl Texture2D {
-    pub unsafe fn new() -> Option<Self> {
-        let mut texture = 0;
-        glGenTextures(1, &mut texture);
-
-        if texture == 0 {
-            None
-        } else {
-            Some(Self(texture))
-        }
-    }
-
-    pub unsafe fn bind(&self) {
-        glBindTexture(GL_TEXTURE_2D, self.0);
-    }
-
-    pub unsafe fn unbind(&self) {
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
-
-    pub unsafe fn set_data(&self, data: &[u8], width: i32, height: i32) {
-        glTexImage2D(
-            GL_TEXTURE_2D,
-            0,
-            GL_RGBA as i32,
-            width,
-            height,
-            0,
-            GL_RGBA,
-            GL_UNSIGNED_BYTE,
-            data.as_ptr() as *const _,
-        );
-    }
-
-    pub unsafe fn set_filter(&self, filter: GLenum) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter as i32);
-    }
-
-    pub unsafe fn set_wrap(&self, wrap: GLenum) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap as i32);
     }
 }
 
@@ -517,8 +513,14 @@ impl Camera {
         self.get_right().cross(self.get_direction()).normalize()
     }
 
+
     pub fn set_position(&mut self, pos: Vector3<f32>) {
         self.position = pos;
+    }
+
+    pub fn rotate(&mut self, angle: f32, axis: Vector3<f32>) {
+        let rot = Quaternion::from_axis_angle(axis, Rad(angle));
+        self.target = rot * (self.target - self.position) + self.position;
     }
 
     pub fn get_view_matrix(&self) -> Matrix4<f32> {

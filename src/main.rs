@@ -4,6 +4,10 @@
 #![allow(clippy::single_match)]
 #![allow(clippy::zero_ptr)]
 #![allow(special_module_name)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_assignments)]
+
 const WINDOW_TITLE: &str = "'Hello world!' said the triangle";
 
 use beryllium::*;
@@ -16,10 +20,15 @@ use imagine::{image::Bitmap, pixel_formats::RGBA8888};
 use OpenGL::*;
 
 use cgmath::{num_traits::clamp, *};
+use colored::*;
 use cstr::*;
 use ogl33::*;
-use std::ffi::CStr;
 use std::{any::Any, collections::HashMap, ffi::CString, path::Path};
+use std::{
+    ffi::CStr,
+    fmt::{self, Display},
+    time::Instant,
+};
 
 //Ping pong a number between a min and max value
 fn ping_pong(t: f32, min: f32, max: f32) -> f32 {
@@ -52,7 +61,42 @@ impl Default for PointLight {
 unsafe impl bytemuck::Zeroable for PointLight {}
 unsafe impl bytemuck::Pod for PointLight {}
 
+#[derive(Debug, Clone, Copy)]
+enum TraceLevel {
+    ERROR,
+    WARNING,
+    INFO,
+}
+
+fn trace(message: &str, level: TraceLevel) {
+    let prefix = "TRACE_";
+    let level_str = match level {
+        TraceLevel::ERROR => "ERROR",
+        TraceLevel::WARNING => "WARNING",
+        TraceLevel::INFO => "INFO",
+    };
+    match level {
+        TraceLevel::ERROR => println!("{}{}: {}", prefix.red(), level_str.red(), message.white()),
+        TraceLevel::WARNING => println!(
+            "{}{}: {}",
+            prefix.yellow(),
+            level_str.yellow(),
+            message.white()
+        ),
+        TraceLevel::INFO => println!(
+            "{}{}: {}",
+            prefix.green(),
+            level_str.green(),
+            message.white()
+        ),
+    }
+}
+
 fn main() {
+    //For timing execution (i.e. how long it takes to load assets)
+    let timer;
+    let mut mouse_captured: bool = true;
+    let mut movement: [bool; 4] = [false; 4]; //[forward, backward, left, right]
     let sdl = SDL::init(InitFlags::Everything).expect("couldn't start SDL");
 
     sdl.gl_set_attribute(SdlGlAttr::MajorVersion, 4).unwrap();
@@ -70,13 +114,15 @@ fn main() {
         )
         .expect("couldn't make a window and context");
 
+    trace("Window created", TraceLevel::INFO);
     win.set_swap_interval(SwapInterval::Immediate);
+
     let mut shader_program;
+    let mut camera = Camera::new(Vector3::new(0.0, 1.0, 3.0), Vector3::new(0.0, 0.0, 0.0));
 
-    let camera = Camera::new(Vector3::new(0.0, 1.0, 3.0), Vector3::new(0.0, 0.0, 0.0));
-
+    timer = Instant::now();
     let mut plane_object = Object::new(mesh_from_obj(Path::new("assets/models/plane.obj")));
-    let mut sphere_object = Object::new(mesh_from_obj(Path::new("assets/models/StandfordDragon.obj")));
+    let mut sphere_object = Object::new(mesh_from_obj(Path::new("assets/models/sphere.obj")));
 
     let bitmap_diffuse = {
         let mut f =
@@ -97,8 +143,13 @@ fn main() {
 
         bitmap
     };
-    let mut diffuse_texture = 0;
-    let mut roughness_texture = 0;
+    trace(
+        &format!("Assets loaded in {:?}", timer.elapsed()),
+        TraceLevel::INFO,
+    );
+
+    let diffuse_texture = 0;
+    let roughness_texture = 0;
 
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
@@ -108,48 +159,31 @@ fn main() {
         sphere_object.mesh.setup();
         plane_object.mesh.setup();
 
-    
-        //ToDo: Wrapper for glGenTextures
-        glGenTextures(1, &mut diffuse_texture);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, diffuse_texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR as i32);
-        glTexImage2D(
-            GL_TEXTURE_2D,
-            0,
-            GL_RGBA8 as GLint,
+        let diffuse_map = Texture2D::new(GL_TEXTURE0).expect("Couldn't create texture");
+        diffuse_map.bind();
+        diffuse_map.set_wrap(GL_REPEAT);
+        diffuse_map.set_filter(GL_LINEAR);
+        diffuse_map.set_data(
+            bytemuck::cast_slice(&bitmap_diffuse.pixels),
             1024,
             1024,
-            0,
             GL_RGBA,
+            GL_RGBA as GLint,
             GL_UNSIGNED_BYTE,
-            bitmap_diffuse.pixels.as_ptr().cast(),
         );
-        glGenerateMipmap(GL_TEXTURE_2D);
 
-        glGenTextures(1, &mut roughness_texture);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, roughness_texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR as i32);
-        glTexImage2D(
-            GL_TEXTURE_2D,
-            0,
-            GL_R8 as GLint,
+        let roughness_map = Texture2D::new(GL_TEXTURE1).expect("Couldn't create texture");
+        roughness_map.bind();
+        roughness_map.set_wrap(GL_REPEAT);
+        roughness_map.set_filter(GL_LINEAR);
+        roughness_map.set_data(
+            bytemuck::cast_slice(&bitmap_roughness.pixels),
             1024,
             1024,
-            0,
             GL_RGBA,
+            GL_RGBA as GLint,
             GL_UNSIGNED_BYTE,
-            bitmap_roughness.pixels.as_ptr().cast(),
         );
-        glGenerateMipmap(GL_TEXTURE_2D);
-        
 
         shader_program = ShaderProgramBuilder::new()
             .create_shader(
@@ -173,23 +207,94 @@ fn main() {
         shader_program.create_uniform(cstr!("roughness_map"));
 
         glUseProgram(shader_program.0);
-
     }
-
+    sdl.set_relative_mouse_mode(mouse_captured)
+        .expect("Couldn't set relative mouse mode");
+    let mut frame_start = sdl.get_ticks();
+    let mut last_frame = 0;
     'main_loop: loop {
-        let frame_start = sdl.get_ticks();
-
+        frame_start = sdl.get_ticks();
+        let delta_time: f32 = ((frame_start as f32) - (last_frame as f32)) / 1000.0;
         // handle events this frame
         while let Some(event) = sdl.poll_events().and_then(Result::ok) {
             match event {
                 Event::Quit(_) => break 'main_loop,
+                Event::Keyboard(KeyboardEvent {
+                    key, is_pressed, ..
+                }) => {
+                    if key.keycode == Keycode::ESCAPE && is_pressed {
+                        //Toggle cursor lock
+                        mouse_captured = !mouse_captured;
+                        sdl.set_relative_mouse_mode(mouse_captured)
+                            .expect("Couldn't set relative mouse mode");
+                    }
+                    if key.keycode == Keycode::W && is_pressed {
+                        movement[0] = true;
+                    } else if key.keycode == Keycode::W && !is_pressed {
+                        movement[0] = false;
+                    }
+
+                    if key.keycode == Keycode::S && is_pressed {
+                        movement[1] = true;
+                    } else if key.keycode == Keycode::S && !is_pressed {
+                        movement[1] = false;
+                    }
+
+                    if key.keycode == Keycode::A && is_pressed {
+                        movement[2] = true;
+                    } else if key.keycode == Keycode::A && !is_pressed {
+                        movement[2] = false;
+                    }
+
+                    if key.keycode == Keycode::D && is_pressed {
+                        movement[3] = true;
+                    } else if key.keycode == Keycode::D && !is_pressed {
+                        movement[3] = false;
+                    }
+                }
+                //Mouse movement
+                Event::MouseMotion(MouseMotionEvent {
+                    x_delta, y_delta, ..
+                }) => {
+                    if !mouse_captured  {
+                        continue;
+                    }
+                    camera.rotate(
+                        -((x_delta as f32) * 0.01) as f32,
+                        Vector3::new(0.0, 1.0, 0.0),
+                    );
+                    camera.rotate(-((y_delta as f32) * 0.01) as f32, camera.get_right());
+                }
+                Event::MouseButton(MouseButtonEvent {
+                    button, is_pressed, ..
+                }) => {
+                    if button == MouseButton::Left && is_pressed {
+                        //Set cursor lock to true
+                        mouse_captured = true;
+                        sdl.set_relative_mouse_mode(mouse_captured)
+                            .expect("Couldn't set relative mouse mode");
+                    }
+                }
                 _ => (),
             }
         }
         let time = sdl.get_ticks() as f32 / 10.0_f32;
-        let translation_pingpong = ping_pong(time * 0.01, -1.0, 1.0);
         let roughness_pingpong = ping_pong(time * 0.01, 0.0, 1.0);
         let transform;
+        if movement[0] {
+            camera.set_position(camera.position + camera.get_direction() * delta_time * 5.0);
+        }
+        if movement[1] {
+            camera.set_position(camera.position - camera.get_direction() * delta_time * 5.0);
+        }
+        if movement[2] {
+            camera.set_position(camera.position - camera.get_right() * delta_time * 5.0);
+            camera.target -= camera.get_right() * delta_time * 5.0;
+        }
+        if movement[3] {
+            camera.set_position(camera.position + camera.get_right() * delta_time * 5.0);
+            camera.target += camera.get_right() * delta_time * 5.0;
+        }
 
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -199,7 +304,7 @@ fn main() {
             shader_program.set_mat4("V", &camera.get_view_matrix());
             shader_program.set_mat4("P", &camera.get_projection_matrix());
             shader_program.set_vec3("camera_pos", &camera.position);
-            shader_program.set_vec3("albedo", &Vector3::new(1.0,1.0,1.0));
+            shader_program.set_vec3("albedo", &Vector3::new(1.0, 1.0, 1.0));
             shader_program.set_float("roughness", roughness_pingpong);
 
             shader_program.set_int("diffuse_map", 0);
@@ -207,7 +312,7 @@ fn main() {
 
             sphere_object.mesh.draw();
 
-            shader_program.set_vec3("albedo", &Vector3::new(1.0,1.0,1.0));
+            shader_program.set_vec3("albedo", &Vector3::new(1.0, 1.0, 1.0));
             plane_object.mesh.draw();
         }
         win.swap_window();
@@ -215,5 +320,6 @@ fn main() {
         if msec > 0 {
             win.set_title(&format!("{} - FPS: {}", WINDOW_TITLE, 1000 / msec));
         }
+        last_frame = frame_start;
     }
 }

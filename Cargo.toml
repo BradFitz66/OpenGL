@@ -14,7 +14,7 @@ imagine = "0.4.0"
 cgmath="0.18.0"
 cstr="0.2.11"
 tobj="3.2.4"
-multizip = "0.1.0"
+colored = "2"
 
 #![feature(core_intrinsics)]
 #![feature(default_free_fn)]
