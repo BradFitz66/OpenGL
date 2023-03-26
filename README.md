@@ -17,7 +17,7 @@ Stretch goals:
 - [x] Textures
 - [ ] Lighting
   - [ ] Shadowmapping
-- [ ] PBR rendering 
+- [ ] PBR 
 
 
 
