@@ -19,12 +19,15 @@ uniform float metallic;
 //Texture maps
 uniform sampler2D diffuse_map;
 uniform sampler2D roughness_map;
+uniform sampler2D normal_map;
+uniform sampler2D metallic_map;
 
 
 in Vertex{
     vec3 pos;
     vec3 norm;
     vec2 uv;
+    mat3 TBN;
 } i;
 
 struct pbr_material {
@@ -49,8 +52,8 @@ pbr_material make_pbr_material() {
     pbr_material mat;
 
     mat.albedo=albedo;
-    mat.metallic=metallic;
-    mat.roughness=roughness*texture(roughness_map,i.uv).r;
+    mat.metallic=metallic*texture(metallic_map,i.uv*4).r;
+    mat.roughness=roughness*texture(roughness_map,i.uv*4).r;
     mat.f0=mix(vec3(0.04),mat.albedo,mat.metallic);
     mat.a=mat.roughness*mat.roughness;
     mat.k=((mat.roughness+1) * (mat.roughness+1))/8;
@@ -63,7 +66,7 @@ micro_surface make_micro_surface(pbr_material mat, vec3 pos, vec3 normal) {
 
     ms.n=normalize(normal);
     ms.v=normalize(camera_pos-pos);
-    ms.l=normalize(vec3(0.0,1.0,0.0));//Hardcoded light direction for now
+    ms.l=normalize(vec3(0.0,1.0,1.0));//Hardcoded light direction for now
     ms.h=normalize(ms.l+ms.v);
 
     return ms;
@@ -115,13 +118,13 @@ vec3 specular(pbr_material mat, micro_surface ms){
 
 
 vec3 brdf(pbr_material mat, micro_surface ms) {
-    vec3 F = fresnel_schlick(mat, ms);
-    vec3 kD = (vec3(1.0)-F) * (1.0-mat.metallic);
+    vec3 Ks = fresnel_schlick(mat, ms);
+    vec3 kD = (vec3(1.0)-Ks) * (1.0-mat.metallic);
 
     vec3 diffuse_color = mix(mat.albedo / M_PI,vec3(0),mat.metallic);
     vec3 specular_color = specular(mat, ms);
 
-    return specular_color + kD * diffuse_color;
+    return M_PI * kD * diffuse_color + mat.metallic * specular_color;
 }
 
 
@@ -129,13 +132,16 @@ vec3 brdf(pbr_material mat, micro_surface ms) {
 out vec4 o_color;
 
 void main(){
+    vec3 normal = normalize(texture(normal_map,i.uv*4).rgb*2.0-1.0);
+    normal = normalize(i.TBN*normal);
+    //normal = i.norm;
     pbr_material mat = make_pbr_material();
-    micro_surface ms = make_micro_surface(mat,i.pos,i.norm);
+    micro_surface ms = make_micro_surface(mat,i.pos,normal);
 
     float NdotL = max(dot(ms.n,ms.l),0.0);
     vec3 Lo = M_PI * brdf(mat,ms) * NdotL * vec3(1.0,1.0,1.0);
     vec3 ambient = vec3(0.1)*mat.albedo;
     vec3 color_HDR = ambient + Lo;
-    vec3 final = color_HDR * texture(diffuse_map,i.uv).rgb;
+    vec3 final = color_HDR * texture(diffuse_map,i.uv*4).rgb;
     o_color = vec4(final,1.0);
 }

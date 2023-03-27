@@ -11,21 +11,28 @@
 const WINDOW_TITLE: &str = "'Hello world!' said the triangle";
 
 use beryllium::*;
+
 use bytemuck::bytes_of;
+
 use core::{
     convert::{TryFrom, TryInto},
     mem::{size_of, size_of_val},
 };
-use imagine::{image::Bitmap, pixel_formats::RGBA8888};
-use OpenGL::*;
 
+use imagine::{image::Bitmap, pixel_formats::RGBA8888};
+use OpenGL_Renderer::*;
+
+use ogl33::*;
 use cgmath::{num_traits::clamp, *};
+
 use colored::*;
 use cstr::*;
-use ogl33::*;
-use std::{any::Any, collections::HashMap, ffi::CString, path::Path};
-use std::{
+
+use std::{any::Any, 
+    collections::HashMap, 
+    ffi::CString, 
     ffi::CStr,
+    path::Path,
     fmt::{self, Display},
     time::Instant,
 };
@@ -92,6 +99,15 @@ fn trace(message: &str, level: TraceLevel) {
     }
 }
 
+fn load_image(path: &Path) -> Bitmap<RGBA8888> {
+    let mut f = std::fs::File::open(path).unwrap();
+    let mut bytes = vec![];
+    std::io::Read::read_to_end(&mut f, &mut bytes).unwrap();
+    let bitmap = Bitmap::<RGBA8888>::try_from_png_bytes(&bytes).unwrap();
+
+    bitmap
+}
+
 fn main() {
     //For timing execution (i.e. how long it takes to load assets)
     let timer;
@@ -115,41 +131,30 @@ fn main() {
         .expect("couldn't make a window and context");
 
     trace("Window created", TraceLevel::INFO);
-    win.set_swap_interval(SwapInterval::Immediate);
+    win.set_swap_interval(SwapInterval::Vsync);
 
     let mut shader_program;
     let mut camera = Camera::new(Vector3::new(0.0, 1.0, 3.0), Vector3::new(0.0, 0.0, 0.0));
 
     timer = Instant::now();
+    
     let mut plane_object = Object::new(mesh_from_obj(Path::new("assets/models/plane.obj")));
     let mut sphere_object = Object::new(mesh_from_obj(Path::new("assets/models/sphere.obj")));
+    
 
-    let bitmap_diffuse = {
-        let mut f =
-            std::fs::File::open(Path::new("assets/textures/Tiles094_1K_Color.png")).unwrap();
-        let mut bytes = vec![];
-        std::io::Read::read_to_end(&mut f, &mut bytes).unwrap();
-        let bitmap = Bitmap::<RGBA8888>::try_from_png_bytes(&bytes).unwrap();
+    let bitmap_diffuse = load_image(Path::new("assets/textures/DiamondPlate008C_1K_Color.png"));
+    let bitmap_roughness = load_image(Path::new("assets/textures/DiamondPlate008C_1K_Roughness.png"));
+    let bitmap_metallic = load_image(Path::new("assets/textures/DiamondPlate008C_1K_Metalness.png"));
+    let bitmap_normal = load_image(Path::new("assets/textures/DiamondPlate008C_1K_NormalGL.png"));
 
-        bitmap
-    };
+    
 
-    let bitmap_roughness = {
-        let mut f =
-            std::fs::File::open(Path::new("assets/textures/Tiles094_1K_Roughness.png")).unwrap();
-        let mut bytes = vec![];
-        std::io::Read::read_to_end(&mut f, &mut bytes).unwrap();
-        let bitmap = Bitmap::<RGBA8888>::try_from_png_bytes(&bytes).unwrap();
 
-        bitmap
-    };
     trace(
         &format!("Assets loaded in {:?}", timer.elapsed()),
         TraceLevel::INFO,
     );
 
-    let diffuse_texture = 0;
-    let roughness_texture = 0;
 
     unsafe {
         load_gl_with(|f_name| win.get_proc_address(f_name));
@@ -185,6 +190,33 @@ fn main() {
             GL_UNSIGNED_BYTE,
         );
 
+        let normal_map = Texture2D::new(GL_TEXTURE2).expect("Couldn't create texture");
+        normal_map.bind();
+        normal_map.set_wrap(GL_REPEAT);
+        normal_map.set_filter(GL_LINEAR);
+        normal_map.set_data(
+            bytemuck::cast_slice(&bitmap_normal.pixels),
+            1024,
+            1024,
+            GL_RGBA,
+            GL_RGBA as GLint,
+            GL_UNSIGNED_BYTE,
+        );
+
+        let metallic_map = Texture2D::new(GL_TEXTURE3).expect("Couldn't create texture");
+        metallic_map.bind();
+        metallic_map.set_wrap(GL_REPEAT);
+        metallic_map.set_filter(GL_LINEAR);
+        metallic_map.set_data(
+            bytemuck::cast_slice(&bitmap_metallic.pixels),
+            1024,
+            1024,
+            GL_RGBA,
+            GL_RGBA as GLint,
+            GL_UNSIGNED_BYTE,
+        );
+
+
         shader_program = ShaderProgramBuilder::new()
             .create_shader(
                 ShaderType::Vertex,
@@ -205,6 +237,8 @@ fn main() {
         shader_program.create_uniform(cstr!("camera_pos"));
         shader_program.create_uniform(cstr!("diffuse_map"));
         shader_program.create_uniform(cstr!("roughness_map"));
+        shader_program.create_uniform(cstr!("normal_map"));
+        shader_program.create_uniform(cstr!("metallic_map"));
 
         glUseProgram(shader_program.0);
     }
@@ -260,10 +294,10 @@ fn main() {
                         continue;
                     }
                     camera.rotate(
-                        -((x_delta as f32) * 0.01) as f32,
+                        -((x_delta as f32) * delta_time * 0.1) as f32,
                         Vector3::new(0.0, 1.0, 0.0),
                     );
-                    camera.rotate(-((y_delta as f32) * 0.01) as f32, camera.get_right());
+                    camera.rotate(-((y_delta as f32) * delta_time * 0.1) as f32, camera.get_right());
                 }
                 Event::MouseButton(MouseButtonEvent {
                     button, is_pressed, ..
@@ -283,9 +317,11 @@ fn main() {
         let transform;
         if movement[0] {
             camera.set_position(camera.position + camera.get_direction() * delta_time * 5.0);
+            camera.target += camera.get_direction() * delta_time * 5.0;
         }
         if movement[1] {
             camera.set_position(camera.position - camera.get_direction() * delta_time * 5.0);
+            camera.target -= camera.get_direction() * delta_time * 5.0;
         }
         if movement[2] {
             camera.set_position(camera.position - camera.get_right() * delta_time * 5.0);
@@ -305,10 +341,13 @@ fn main() {
             shader_program.set_mat4("P", &camera.get_projection_matrix());
             shader_program.set_vec3("camera_pos", &camera.position);
             shader_program.set_vec3("albedo", &Vector3::new(1.0, 1.0, 1.0));
-            shader_program.set_float("roughness", roughness_pingpong);
+            shader_program.set_float("roughness", 0.25);
+            shader_program.set_float("metallic", 1.0);
 
             shader_program.set_int("diffuse_map", 0);
             shader_program.set_int("roughness_map", 1);
+            shader_program.set_int("normal_map", 2);
+            shader_program.set_int("metallic_map", 3);
 
             sphere_object.mesh.draw();
 

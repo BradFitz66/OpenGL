@@ -1,5 +1,5 @@
 [package]
-name = "OpenGL"
+name = "OpenGL_Renderer"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,6 +15,7 @@ cgmath="0.18.0"
 cstr="0.2.11"
 tobj="3.2.4"
 colored = "2"
+radiant = "0.2"
 
 #![feature(core_intrinsics)]
 #![feature(default_free_fn)]

@@ -1,18 +1,15 @@
 use bytemuck::*;
-use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3, Quaternion, SquareMatrix, Rotation3, Rad};
+use cgmath::{
+    Deg, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation3, SquareMatrix, Vector2, Vector3,
+};
 use ogl33::*;
 
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
 };
-use std::{
-    fs::File,
-    io::{prelude::*},
-    path::Path,
-};
-
-
+use std::{fs::File, io::prelude::*, path::Path};
+use radiant::*;
 //Wrapper for opengl textures
 #[derive(Clone)]
 pub struct Texture2D(pub GLuint);
@@ -37,7 +34,15 @@ impl Texture2D {
         glBindTexture(GL_TEXTURE_2D, 0);
     }
 
-    pub unsafe fn set_data(&self, data: &[u8], width: i32, height: i32, format: GLenum, internal_format: GLint, type_: GLenum) {
+    pub unsafe fn set_data(
+        &self,
+        data: &[u8],
+        width: i32,
+        height: i32,
+        format: GLenum,
+        internal_format: GLint,
+        type_: GLenum,
+    ) {
         glTexImage2D(
             GL_TEXTURE_2D,
             0,
@@ -136,23 +141,26 @@ pub struct ShaderProgramBuilder {
 }
 
 //Wrapper for opengl shader programs (uses builder pattern)
-pub struct ShaderProgram(pub GLuint, pub HashMap<String, GLint>, pub HashMap<String,GLuint>); //Program, Uniforms, UniformBlocks
+pub struct ShaderProgram(
+    pub GLuint,
+    pub HashMap<String, GLint>,
+    pub HashMap<String, GLuint>,
+); //Program, Uniforms, UniformBlocks
 
 impl ShaderProgram {
     pub unsafe fn create_uniform(&mut self, name: &CStr) {
         let uniform_location = glGetUniformLocation(self.0, name.as_ptr());
         self.1
-        .insert(name.to_str().unwrap().to_string(), uniform_location);
+            .insert(name.to_str().unwrap().to_string(), uniform_location);
     }
 
     pub unsafe fn create_uniformblock(&mut self, name: &CStr) {
         let uniform_location = glGetUniformBlockIndex(self.0, name.as_ptr());
         self.2
-        .insert(name.to_str().unwrap().to_string(), uniform_location);
+            .insert(name.to_str().unwrap().to_string(), uniform_location);
     }
-    
-    pub unsafe fn set_mat4(&self, name: &str, mat: &Matrix4<f32>) {
 
+    pub unsafe fn set_mat4(&self, name: &str, mat: &Matrix4<f32>) {
         glUniformMatrix4fv(
             self.1[name],
             1,
@@ -176,8 +184,6 @@ impl ShaderProgram {
     pub unsafe fn set_int(&self, name: &str, val: i32) {
         glUniform1i(self.1[name], val);
     }
-
-
 }
 
 impl ShaderProgramBuilder {
@@ -219,7 +225,11 @@ impl ShaderProgramBuilder {
                 );
             }
 
-            Some(ShaderProgram(self.id, self.uniforms.clone(),self.uniformblocks.clone()))
+            Some(ShaderProgram(
+                self.id,
+                self.uniforms.clone(),
+                self.uniformblocks.clone(),
+            ))
         }
     }
 }
@@ -258,43 +268,82 @@ unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u3
     Some(shader)
 }
 
+pub fn calculate_tangents(positions: Vec<[f32; 3]>, texcoords: Vec<[f32; 2]>) -> Vec<f32> {
+    let mut tangents: Vec<f32> = Vec::new();
+
+    for i in 0..positions.len() / 3 {
+        let i = i * 3;
+        let v0 = Vector3::new(positions[i][0], positions[i][1], positions[i][2]);
+        let v1 = Vector3::new(
+            positions[i + 1][0],
+            positions[i + 1][1],
+            positions[i + 1][2],
+        );
+        let v2 = Vector3::new(
+            positions[i + 2][0],
+            positions[i + 2][1],
+            positions[i + 2][2],
+        );
+
+        let uv0 = Vector2::new(texcoords[i][0], texcoords[i][1]);
+        let uv1 = Vector2::new(texcoords[i + 1][0], texcoords[i + 1][1]);
+        let uv2 = Vector2::new(texcoords[i + 2][0], texcoords[i + 2][1]);
+
+        let delta_pos1 = v1 - v0;
+        let delta_pos2 = v2 - v0;
+
+        let delta_uv1 = uv1 - uv0;
+        let delta_uv2 = uv2 - uv0;
+
+        let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+        let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
+        tangents.push(tangent.x);
+        tangents.push(tangent.y);
+        tangents.push(tangent.z);
+    }
+    tangents
+}
+
 //Parse an obj file and return a mesh (HEAVILY WIP)
 pub fn mesh_from_obj(path: &Path) -> Mesh {
-    let (models, _) = tobj::load_obj(path, &tobj::LoadOptions{
-        triangulate: true,
-        single_index: true,
-        ..Default::default()
-    }).unwrap();
+    let (models, _) = tobj::load_obj(
+        path,
+        &tobj::LoadOptions {
+            triangulate: true,
+            single_index: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let mesh = &models[0].mesh;
 
     //Convert normals from Vec<f32> to Vec<[f32;3]>
-    let vertex_normals: Vec<[f32;3]> = 
-        mesh
+    let vertex_normals: Vec<[f32; 3]> = mesh
         .normals
         .chunks(3)
-        .map(|chunk|  TryInto::<[f32; 3]>::try_into(chunk).unwrap())
+        .map(|chunk| TryInto::<[f32; 3]>::try_into(chunk).unwrap())
         .collect();
 
-    let vertex_texcoords: Vec<[f32;2]> = 
-        mesh
+    let vertex_texcoords: Vec<[f32; 2]> = mesh
         .texcoords
         .chunks(2)
-        .map(|chunk|  TryInto::<[f32; 2]>::try_into(chunk).unwrap())
+        .map(|chunk| TryInto::<[f32; 2]>::try_into(chunk).unwrap())
         .collect();
-    //Kinda ugly
 
-    //Convert vertex_positions from Vec<[f32;3]> to Vec<[f32;8]> (since type Vertex is [f32;3+3+2])
-    //Range 0..3 is position, 3..6 is normal, 6..8 is texcoord
-    let vertices:Vec<Vertex> = models[0]
-        .mesh
+    let vertex_positions: Vec<[f32; 3]> = mesh
         .positions
         .chunks(3)
         .map(|chunk| TryInto::<[f32; 3]>::try_into(chunk).unwrap())
+        .collect();
+
+    //Convert vertex_positions from Vec<[f32;3]> to Vec<[f32;8]> (since type Vertex is [f32;3+3+2])
+    //Range 0..3 is position, 3..6 is normal, 6..8 is texcoord
+    let vertices: Vec<Vertex> = vertex_positions
         .into_iter()
-        .zip(vertex_normals.into_iter()) 
+        .zip(vertex_normals.into_iter())
         .zip(vertex_texcoords.into_iter())
-        .map(|((chunk_pos,chunk_normal),chunk_tex)| {
-            let mut result = [0.0; 8];
+        .map(|((chunk_pos, chunk_normal), chunk_tex)| {
+            let mut result = [0.0; 14];
             result[0..3].copy_from_slice(&chunk_pos);
             result[3..6].copy_from_slice(&chunk_normal);
             result[6..8].copy_from_slice(&chunk_tex);
@@ -303,7 +352,7 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
         .collect();
 
     //Convert vertex_positions from Vec<u32> to Vec<[u32;3]>
-    let vertex_indices:Vec<VertIndicies> = models[0]
+    let vertex_indices: Vec<VertIndicies> = models[0]
         .mesh
         .indices
         .chunks(3)
@@ -313,49 +362,50 @@ pub fn mesh_from_obj(path: &Path) -> Mesh {
     Mesh {
         vertices,
         indicies: vertex_indices,
+        tangents: Vec::new(),
+        bi_tangents: Vec::new(),
         vao: None,
         vbo: None,
         ebo: None,
     }
 }
 
-
-pub struct Scene{
+pub struct Scene {
     pub objects: Vec<Object>,
 }
 
-impl Scene{
-    pub fn new() -> Self{
-        Self{
+impl Scene {
+    pub fn new() -> Self {
+        Self {
             objects: Vec::new(),
         }
     }
 
-    pub fn add_object(&mut self, object: Object){
+    pub fn add_object(&mut self, object: Object) {
         self.objects.push(object);
     }
 
-    pub fn update_model_matrices(&mut self){
-        for mesh in self.objects.iter_mut(){
+    pub fn update_model_matrices(&mut self) {
+        for mesh in self.objects.iter_mut() {
             mesh.update_model_matrix();
         }
     }
 
-    pub fn draw(&self){
-        for object in self.objects.iter(){
+    pub fn draw(&self) {
+        for object in self.objects.iter() {
             object.mesh.draw();
         }
     }
 
-    pub unsafe fn setup(&mut self){
-        for object in self.objects.iter_mut(){
+    pub unsafe fn setup(&mut self) {
+        for object in self.objects.iter_mut() {
             object.mesh.setup();
         }
     }
 }
 
 //High level object that contains a mesh and a transform
-pub struct Object{
+pub struct Object {
     pub mesh: Mesh,
     pub position: Vector3<f32>,
     pub rotation: Quaternion<f32>,
@@ -364,9 +414,9 @@ pub struct Object{
     pub model_matrix: Matrix4<f32>,
 }
 
-impl Object{
-    pub fn new(mesh: Mesh) -> Self{
-        Self{
+impl Object {
+    pub fn new(mesh: Mesh) -> Self {
+        Self {
             mesh,
             position: Vector3::new(0.0, 0.0, 0.0),
             rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
@@ -375,18 +425,22 @@ impl Object{
         }
     }
 
-    pub fn update_model_matrix(&mut self){
-        self.model_matrix = Matrix4::from_translation(self.position) * Matrix4::from(self.rotation) * Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z);
+    pub fn update_model_matrix(&mut self) {
+        self.model_matrix = Matrix4::from_translation(self.position)
+            * Matrix4::from(self.rotation)
+            * Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z);
     }
 }
 
 pub type VertIndicies = [u32; 3];
 
-pub type Vertex = [f32; 3 + 3 + 2]; //Position, Normal, TextureCoords
+pub type Vertex = [f32; 3 + 3 + 2 + 3 + 3]; //Position, Normal, TextureCoords, Tangent, BiTangent
 
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub indicies: Vec<VertIndicies>,
+    pub tangents: Vec<Vector3<f32>>,
+    pub bi_tangents: Vec<Vector3<f32>>,
     pub vao: Option<VertexArray>,
     pub vbo: Option<Buffer>,
     pub ebo: Option<Buffer>,
@@ -397,13 +451,91 @@ impl Mesh {
         Self {
             vertices: v,
             indicies: i,
+            tangents: Vec::new(),
+            bi_tangents: Vec::new(),
             vao: None,
             vbo: None,
             ebo: None,
         }
     }
 
+    pub unsafe fn calculate_tangents(&mut self) {
+
+        //Calculate tangents and bi-tangents for each triangle
+        for i in (0..self.indicies.len()) {
+            let i0 = self.indicies[i][0] as usize;
+            let i1 = self.indicies[i][1] as usize;
+            let i2 = self.indicies[i][2] as usize;
+
+            let v0 = Vector3::new(
+                self.vertices[i0][0],
+                self.vertices[i0][1],
+                self.vertices[i0][2],
+            );
+            let v1 = Vector3::new(
+                self.vertices[i1][0],
+                self.vertices[i1][1],
+                self.vertices[i1][2],
+            );
+            let v2 = Vector3::new(
+                self.vertices[i2][0],
+                self.vertices[i2][1],
+                self.vertices[i2][2],
+            );
+
+            let normal = Vector3::new(
+                self.vertices[i0][3],
+                self.vertices[i0][4],
+                self.vertices[i0][5],
+            );
+
+
+            let uv0 = Vector2::new(self.vertices[i0][6], self.vertices[i0][7]);
+            let uv1 = Vector2::new(self.vertices[i1][6], self.vertices[i1][7]);
+            let uv2 = Vector2::new(self.vertices[i2][6], self.vertices[i2][7]);
+
+            let delta_pos1 = v1 - v0;
+            let delta_pos2 = v2 - v0;
+
+            let delta_uv1 = uv1 - uv0;
+            let delta_uv2 = uv2 - uv0;
+
+            let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+            let mut tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
+            let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r;
+            //Make tangent and bi-tangent orthogonal to the normal
+            tangent = (tangent - normal * normal.dot(tangent)).normalize();
+
+            //Put the tangent and bi-tangent in the vertices
+            self.vertices[i0][8] = tangent.x;
+            self.vertices[i0][9] = tangent.y;
+            self.vertices[i0][10] = tangent.z;
+
+            self.vertices[i1][8] = tangent.x;
+            self.vertices[i1][9] = tangent.y;
+            self.vertices[i1][10] = tangent.z;
+
+            self.vertices[i2][8] = tangent.x;
+            self.vertices[i2][9] = tangent.y;
+            self.vertices[i2][10] = tangent.z;
+
+            self.vertices[i0][11] = bitangent.x;
+            self.vertices[i0][12] = bitangent.y;
+            self.vertices[i0][13] = bitangent.z;
+            
+            self.vertices[i1][11] = bitangent.x;
+            self.vertices[i1][12] = bitangent.y;
+            self.vertices[i1][13] = bitangent.z;
+
+            self.vertices[i2][11] = bitangent.x;
+            self.vertices[i2][12] = bitangent.y;
+            self.vertices[i2][13] = bitangent.z;
+        }
+    }
+
     pub unsafe fn setup(&mut self) -> &Self {
+        self.calculate_tangents();
+
         self.vao = Some(VertexArray::new().expect("Failed to create vertex array"));
 
         self.vbo = Some(
@@ -418,7 +550,7 @@ impl Mesh {
         //self.vao, and the other buffers, are an Option so we need to unwrap it
         self.vao.unwrap().bind();
         self.vbo.unwrap().bind();
-        
+
         self.vbo
             .unwrap()
             .set_data(cast_slice(self.vertices.as_slice()));
@@ -428,7 +560,8 @@ impl Mesh {
             .unwrap()
             .set_data(cast_slice(self.indicies.as_slice()));
 
-        glEnableVertexAttribArray(0);
+        //Calculate tangents and bi-tangents
+
         glVertexAttribPointer(
             0,
             3,
@@ -437,7 +570,8 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::ptr::null(),
         );
-        
+        glEnableVertexAttribArray(0);
+
         glVertexAttribPointer(
             1,
             3,
@@ -448,7 +582,6 @@ impl Mesh {
         );
         glEnableVertexAttribArray(1);
 
-        glEnableVertexAttribArray(2);
         glVertexAttribPointer(
             2,
             2,
@@ -457,6 +590,27 @@ impl Mesh {
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 6]>() as *const _,
         );
+        glEnableVertexAttribArray(2);
+
+        glVertexAttribPointer(
+            3,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            std::mem::size_of::<Vertex>().try_into().unwrap(),
+            std::mem::size_of::<[f32; 8]>() as *const _,
+        );
+        glEnableVertexAttribArray(3);
+
+        glVertexAttribPointer(
+            4,
+            3,
+            GL_FLOAT,
+            GL_FALSE,
+            std::mem::size_of::<Vertex>().try_into().unwrap(),
+            std::mem::size_of::<[f32; 11]>() as *const _,
+        );
+        glEnableVertexAttribArray(4);
 
         self.vao.unwrap().unbind();
 
@@ -473,7 +627,7 @@ impl Mesh {
                 GL_UNSIGNED_INT,
                 std::ptr::null(),
             );
-            self.vao.unwrap().unbind();            
+            self.vao.unwrap().unbind();
         }
     }
 }
@@ -512,7 +666,6 @@ impl Camera {
     pub fn get_up(&self) -> Vector3<f32> {
         self.get_right().cross(self.get_direction()).normalize()
     }
-
 
     pub fn set_position(&mut self, pos: Vector3<f32>) {
         self.position = pos;
