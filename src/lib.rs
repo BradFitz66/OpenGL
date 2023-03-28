@@ -1,8 +1,14 @@
+use __core::ffi::c_char;
+use __core::ffi::c_int;
+use __core::ffi::c_uchar;
+use __core::ffi::c_uint;
 use bytemuck::*;
 use glam::{Vec3, Quat, Mat4, Vec2};
-use ogl33::*;
+use gl33::*;
+use gl33::global_loader::*;
 use stb_image::image::{LoadResult, Image};
 
+use std::os::raw::c_void;
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
@@ -11,12 +17,12 @@ use std::{fs::File, io::prelude::*, path::Path};
 //Wrapper for opengl textures
 #[derive(Clone)]
 pub struct Texture2D<T>{
-    pub id: GLuint,
+    pub id: c_uint,
     pub data: Vec<T>,
 }
 
 impl Texture2D<u8> {
-    pub unsafe fn new(texture_unit: GLenum,image_path:&str) -> Option<Self> {
+    pub unsafe fn new(texture_unit: GLenum,image_path:&str, gl:&GlFns) -> Option<Self> {
         let path = Path::new(image_path);
         let mut data:Vec<u8> = Vec::new();
         let result:LoadResult = stb_image::image::load_with_depth(path, 0, true);
@@ -35,8 +41,8 @@ impl Texture2D<u8> {
         }
 
         let mut texture = 0;
-        glGenTextures(1, &mut texture);
-        glActiveTexture(texture_unit);
+        gl.GenTextures(1, &mut texture);
+        gl.ActiveTexture(texture_unit);
         if texture == 0 {
             None
         } else {
@@ -44,12 +50,12 @@ impl Texture2D<u8> {
         }
     }
 
-    pub unsafe fn bind(&self) {
-        glBindTexture(GL_TEXTURE_2D, self.id);
+    pub unsafe fn bind(&self,gl:&GlFns) {
+        gl.BindTexture(GL_TEXTURE_2D, self.id);
     }
 
-    pub unsafe fn unbind(&self) {
-        glBindTexture(GL_TEXTURE_2D, 0);
+    pub unsafe fn unbind(&self,gl:&GlFns) {
+        gl.BindTexture(GL_TEXTURE_2D, 0);
     }
 
     pub unsafe fn set_data(
@@ -57,10 +63,11 @@ impl Texture2D<u8> {
         width: i32,
         height: i32,
         format: GLenum,
-        internal_format: GLint,
+        internal_format: c_int,
         type_: GLenum,
+        gl:&GlFns
     ) {
-        glTexImage2D(
+        gl.TexImage2D(
             GL_TEXTURE_2D,
             0,
             internal_format,
@@ -73,19 +80,19 @@ impl Texture2D<u8> {
         );
     }
 
-    pub unsafe fn set_filter(&self, filter: GLenum) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter as i32);
+    pub unsafe fn set_filter(&self, filter: GLenum,gl:&GlFns) {
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter.0 as i32);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter.0 as i32);
     }
 
-    pub unsafe fn set_wrap(&self, wrap: GLenum) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap as i32);
+    pub unsafe fn set_wrap(&self, wrap: GLenum,gl:&GlFns) {
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap.0 as i32);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap.0 as i32);
     }
 }
 
 impl Texture2D<f32> {
-    pub unsafe fn new(texture_unit: GLenum,image_path:&str) -> Option<Self> {
+    pub unsafe fn new(texture_unit: GLenum,image_path:&str, gl:&GlFns) -> Option<Self> {
         let path = Path::new(image_path);
         let mut data:Vec<f32> = Vec::new();
         let result:LoadResult = stb_image::image::load(path);
@@ -103,8 +110,8 @@ impl Texture2D<f32> {
         }
 
         let mut texture = 0;
-        glGenTextures(1, &mut texture);
-        glActiveTexture(texture_unit);
+        gl.GenTextures(1, &mut texture);
+        gl.ActiveTexture(texture_unit);
         if texture == 0 {
             None
         } else {
@@ -112,26 +119,27 @@ impl Texture2D<f32> {
         }
     }
 
-    pub unsafe fn bind(&self) {
-        glBindTexture(GL_TEXTURE_2D, self.id);
+    pub unsafe fn bind(&self,gl:&GlFns) {
+        gl.BindTexture(GL_TEXTURE_2D, self.id);
     }
 
-    pub unsafe fn unbind(&self) {
-        glBindTexture(GL_TEXTURE_2D, 0);
+    pub unsafe fn unbind(&self,gl:&GlFns) {
+        gl.BindTexture(GL_TEXTURE_2D, 0);
     }
 
     pub unsafe fn set_data(
         &self,
         width: i32,
         height: i32,
-        internal_format: GLint,
+        internal_format: c_int,
         format: GLenum,
         type_: GLenum,
+        gl:&GlFns
     ) {
-        glTexImage2D(
+        gl.TexImage2D(
             GL_TEXTURE_2D,
             0,
-            GL_RGB16F as i32,
+            GL_RGB16F.0 as i32,
             width,
             height,
             0,
@@ -141,25 +149,25 @@ impl Texture2D<f32> {
         );
     }
 
-    pub unsafe fn set_filter(&self, filter: GLenum) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter as i32);
+    pub unsafe fn set_filter(&self, filter: GLenum,gl:&GlFns) {
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter.0 as i32);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter.0 as i32);
     }
 
-    pub unsafe fn set_wrap(&self, wrap: GLenum) {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap as i32);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap as i32);
+    pub unsafe fn set_wrap(&self, wrap: GLenum,gl:&GlFns) {
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap.0 as i32);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap.0 as i32);
     }
 }
 
 //Wrapper for opengl buffer objects
 #[derive(Clone, Copy)]
-pub struct Buffer(pub GLuint, pub GLenum, pub GLenum); //Buffer, Target, Usage
+pub struct Buffer(pub c_uint, pub GLenum, pub GLenum); //Buffer, Target, Usage
 
 impl Buffer {
-    pub unsafe fn new(usage: GLenum, target: GLenum) -> Option<Self> {
+    pub unsafe fn new(usage: GLenum, target: GLenum,gl:&GlFns) -> Option<Self> {
         let mut buffer = 0;
-        glGenBuffers(1, &mut buffer);
+        gl.GenBuffers(1, &mut buffer);
 
         if buffer == 0 {
             None
@@ -168,18 +176,18 @@ impl Buffer {
         }
     }
 
-    pub unsafe fn bind(&self) -> &Self {
-        glBindBuffer(self.1, self.0);
+    pub unsafe fn bind(&self,gl:&GlFns) -> &Self {
+        gl.BindBuffer(self.1, self.0);
         self
     }
 
-    pub unsafe fn unbind(&self) -> &Self {
-        glBindBuffer(self.1, 0);
+    pub unsafe fn unbind(&self,gl:&GlFns) -> &Self {
+        gl.BindBuffer(self.1, 0);
         self
     }
 
-    pub unsafe fn set_data(&self, data: &[u8]) {
-        glBufferData(
+    pub unsafe fn set_data(&self, data: &[u8],gl:&GlFns) {
+        gl.BufferData(
             self.1,
             data.len().try_into().unwrap(),
             data.as_ptr() as *const _,
@@ -190,13 +198,13 @@ impl Buffer {
 
 //Buffer for opengl vertex array objects
 #[derive(Clone, Copy)]
-pub struct VertexArray(pub GLuint);
+pub struct VertexArray(pub c_uint);
 
 impl VertexArray {
-    pub unsafe fn new() -> Option<Self> {
+    pub unsafe fn new(gl:&GlFns) -> Option<Self> {
         let mut vao = 0;
 
-        glGenVertexArrays(1, &mut vao);
+        gl.GenVertexArrays(1, &mut vao);
 
         if vao == 0 {
             None
@@ -205,104 +213,104 @@ impl VertexArray {
         }
     }
 
-    pub unsafe fn unbind(&self) {
-        glBindVertexArray(0);
+    pub unsafe fn unbind(&self,gl:&GlFns) {
+        gl.BindVertexArray(0);
     }
 
-    pub unsafe fn bind(&self) {
-        glBindVertexArray(self.0);
+    pub unsafe fn bind(&self,gl:&GlFns) {
+        gl.BindVertexArray(self.0);
     }
 }
 
 pub enum ShaderType {
-    Vertex = GL_VERTEX_SHADER as isize,
-    Fragment = GL_FRAGMENT_SHADER as isize,
+    Vertex = GL_VERTEX_SHADER.0 as isize ,
+    Fragment = GL_FRAGMENT_SHADER.0 as isize,
 }
 
 pub struct ShaderProgramBuilder {
-    id: GLuint,
-    uniforms: HashMap<String, GLint>,
-    uniformblocks: HashMap<String, GLuint>,
+    id: c_uint,
+    uniforms: HashMap<String, c_int>,
+    uniformblocks: HashMap<String, c_uint>,
 }
 
 //Wrapper for opengl shader programs (uses builder pattern)
 pub struct ShaderProgram(
-    pub GLuint,
-    pub HashMap<String, GLint>,
-    pub HashMap<String, GLuint>,
+    pub c_uint,
+    pub HashMap<String, c_int>,
+    pub HashMap<String, c_uint>,
 ); //Program, Uniforms, UniformBlocks
 
 impl ShaderProgram {
-    pub unsafe fn create_uniform(&mut self, name: &CStr) {
-        let uniform_location = glGetUniformLocation(self.0, name.as_ptr());
+    pub unsafe fn create_uniform(&mut self, name: &CStr, gl:&GlFns) {
+        let uniform_location = gl.GetUniformLocation(self.0, name.as_ptr() as *const u8);
         self.1
             .insert(name.to_str().unwrap().to_string(), uniform_location);
     }
 
-    pub unsafe fn create_uniformblock(&mut self, name: &CStr) {
-        let uniform_location = glGetUniformBlockIndex(self.0, name.as_ptr());
+    pub unsafe fn create_uniformblock(&mut self, name: &CStr, gl:&GlFns) {
+        let uniform_location = gl.GetUniformBlockIndex(self.0, name.as_ptr() as *const u8);
         self.2
             .insert(name.to_str().unwrap().to_string(), uniform_location);
     }
 
-    pub unsafe fn set_mat4(&self, name: &str, mat: &Mat4) {
-        glUniformMatrix4fv(
+    pub unsafe fn set_mat4(&self, name: &str, mat: &Mat4, gl:&GlFns) {
+        gl.UniformMatrix4fv(
             self.1[name],
             1,
-            GL_FALSE,
+            GL_FALSE.0 as u8,
             mat as *const Mat4 as *const f32,
         );
     }
 
-    pub unsafe fn set_vec3(&self, name: &str, vec: Vec3) {
-        glUniform3f(self.1[name], vec.x, vec.y, vec.z);
+    pub unsafe fn set_vec3(&self, name: &str, vec: Vec3, gl:&GlFns) {
+        gl.Uniform3f(self.1[name], vec.x, vec.y, vec.z);
     }
 
-    pub unsafe fn set_vec4(&self, name: &str, vec: &cgmath::Vector4<f32>) {
-        glUniform4f(self.1[name], vec.x, vec.y, vec.z, vec.w);
+    pub unsafe fn set_vec4(&self, name: &str, vec: &cgmath::Vector4<f32>, gl:&GlFns) {
+        gl.Uniform4f(self.1[name], vec.x, vec.y, vec.z, vec.w);
     }
 
-    pub unsafe fn set_float(&self, name: &str, val: f32) {
-        glUniform1f(self.1[name], val);
+    pub unsafe fn set_float(&self, name: &str, val: f32, gl:&GlFns) {
+        gl.Uniform1f(self.1[name], val);
     }
 
-    pub unsafe fn set_int(&self, name: &str, val: i32) {
-        glUniform1i(self.1[name], val);
+    pub unsafe fn set_int(&self, name: &str, val: i32, gl:&GlFns) {
+        gl.Uniform1i(self.1[name], val);
     }
 }
 
 impl ShaderProgramBuilder {
-    pub fn new() -> Self {
-        unsafe {
-            Self {
-                id: glCreateProgram(),
-                uniforms: HashMap::new(),
-                uniformblocks: HashMap::new(),
-            }
+    pub fn new(gl:&GlFns) -> Self {
+        let id = gl.CreateProgram();
+        Self {
+            id: id,
+            uniforms: HashMap::new(),
+            uniformblocks: HashMap::new(),
         }
+        
     }
     //Compiles shader from source and attaches it to the program, as-well as deleting it after attachment
-    pub fn create_shader(&self, shader_type: ShaderType, shader_src: &str) -> &Self {
-        unsafe {
-            let shader = compile_shader(shader_type, shader_src).expect("Failed to compile shader");
-            glAttachShader(self.id, shader);
-            glDeleteShader(shader);
+    pub fn create_shader(&self, shader_type: ShaderType, shader_src: &str, gl:&GlFns) -> &Self {
+        unsafe {            
+            let shader = compile_shader(shader_type, shader_src,gl).expect("Failed to compile shader");
+            //Print GL errors
+            gl.AttachShader(self.id, shader);
+            gl.DeleteShader(shader);
         }
-
         self
     }
     //Links the program and returns a ShaderProgram wrapper
-    pub fn link(&self) -> Option<ShaderProgram> {
+    pub fn link(&self, gl:&GlFns) -> Option<ShaderProgram> {
         unsafe {
-            glLinkProgram(self.id);
+            gl.LinkProgram(self.id);
 
             let mut success = 0;
-            glGetProgramiv(self.id, GL_LINK_STATUS, &mut success);
+            gl.GetProgramiv(self.id, GL_LINK_STATUS, &mut success);
             if success == 0 {
                 let mut v: Vec<u8> = Vec::with_capacity(1024);
                 let mut log_len = 0_i32;
 
-                glGetProgramInfoLog(self.id, 1024, &mut log_len, v.as_mut_ptr().cast());
+                gl.GetProgramInfoLog(self.id, 1024, &mut log_len, v.as_mut_ptr().cast());
                 v.set_len(log_len.try_into().unwrap());
                 panic!(
                     "Shader program linking failed: {}",
@@ -329,20 +337,21 @@ pub fn shader_from_file(path: &Path) -> String {
 }
 
 //Compiles a shader from a string source and returns the shader id
-unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u32> {
-    let shader = glCreateShader(shader_type as u32);
-    let shader_src = CString::new(shader_src).unwrap();
-    glShaderSource(shader, 1, &shader_src.as_ptr(), std::ptr::null());
-
-    glCompileShader(shader);
-
+unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str, gl:&GlFns) -> Option<u32> {
+    println!("Entering compile_shader");
+    let shader = gl.CreateShader(gl33::GLenum(shader_type as u32));
+    let shader_src = CString::new("").unwrap();
+    
+    gl.ShaderSource(shader, 1, shader_src.as_ptr() as *const *const c_uchar, std::ptr::null());
+    
+    gl.CompileShader(shader);
     let mut success = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &mut success);
+    gl.GetShaderiv(shader, GL_COMPILE_STATUS, &mut success);
     if success == 0 {
         let mut v: Vec<u8> = Vec::with_capacity(1024);
         let mut log_len = 0_i32;
 
-        glGetShaderInfoLog(shader, 1024, &mut log_len, v.as_mut_ptr().cast());
+        gl.GetShaderInfoLog(shader, 1024, &mut log_len, v.as_mut_ptr().cast());
         v.set_len(log_len.try_into().unwrap());
         panic!(
             "Shader compilation failed: {}",
@@ -355,7 +364,7 @@ unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u3
 
 
 //Parse an obj file and return a mesh (HEAVILY WIP)
-pub fn mesh_from_obj(path: &Path) -> Mesh {
+pub fn mesh_from_obj(path: &Path, ) -> Mesh {
     let (models, _) = tobj::load_obj(
         path,
         &tobj::LoadOptions {
@@ -441,15 +450,15 @@ impl Scene {
         }
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, gl: &GlFns) {
         for object in self.objects.iter() {
-            object.mesh.draw();
+            object.mesh.draw(gl);
         }
     }
 
-    pub unsafe fn setup(&mut self) {
+    pub unsafe fn setup(&mut self, gl: &GlFns) {
         for object in self.objects.iter_mut() {
-            object.mesh.setup();
+            object.mesh.setup(gl);
         }
     }
 }
@@ -581,101 +590,101 @@ impl Mesh {
         }
     }
 
-    pub unsafe fn setup(&mut self) -> &Self {
+    pub unsafe fn setup(&mut self, gl:&GlFns) -> &Self {
         self.calculate_tangents();
 
-        self.vao = Some(VertexArray::new().expect("Failed to create vertex array"));
+        self.vao = Some(VertexArray::new(gl).expect("Failed to create vertex array"));
 
         self.vbo = Some(
-            Buffer::new(GL_STATIC_DRAW, GL_ARRAY_BUFFER).expect("Failed to create vertex buffer"),
+            Buffer::new(GL_STATIC_DRAW, GL_ARRAY_BUFFER,gl).expect("Failed to create vertex buffer"),
         );
 
         self.ebo = Some(
-            Buffer::new(GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER)
+            Buffer::new(GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER,gl)
                 .expect("Failed to create element buffer"),
         );
 
         //self.vao, and the other buffers, are an Option so we need to unwrap it
-        self.vao.unwrap().bind();
-        self.vbo.unwrap().bind();
+        self.vao.unwrap().bind(gl);
+        self.vbo.unwrap().bind(gl);
 
         self.vbo
             .unwrap()
-            .set_data(cast_slice(self.vertices.as_slice()));
+            .set_data(cast_slice(self.vertices.as_slice()),gl);
 
-        self.ebo.unwrap().bind();
+        self.ebo.unwrap().bind(gl);
         self.ebo
             .unwrap()
-            .set_data(cast_slice(self.indicies.as_slice()));
+            .set_data(cast_slice(self.indicies.as_slice()),gl);
 
         //Calculate tangents and bi-tangents
 
-        glVertexAttribPointer(
+        gl.VertexAttribPointer(
             0,
             3,
             GL_FLOAT,
-            GL_FALSE,
+            GL_FALSE.0 as u8,
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::ptr::null(),
         );
-        glEnableVertexAttribArray(0);
+        gl.EnableVertexAttribArray(0);
 
-        glVertexAttribPointer(
+        gl.VertexAttribPointer(
             1,
             3,
             GL_FLOAT,
-            GL_FALSE,
+            GL_FALSE.0 as u8,
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 3]>() as *const _,
         );
-        glEnableVertexAttribArray(1);
+        gl.EnableVertexAttribArray(1);
 
-        glVertexAttribPointer(
+        gl.VertexAttribPointer(
             2,
             2,
             GL_FLOAT,
-            GL_FALSE,
+            GL_FALSE.0 as u8,
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 6]>() as *const _,
         );
-        glEnableVertexAttribArray(2);
+        gl.EnableVertexAttribArray(2);
 
-        glVertexAttribPointer(
+        gl.VertexAttribPointer(
             3,
             3,
             GL_FLOAT,
-            GL_FALSE,
+            GL_FALSE.0 as u8,
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 8]>() as *const _,
         );
-        glEnableVertexAttribArray(3);
+        gl.EnableVertexAttribArray(3);
 
-        glVertexAttribPointer(
+        gl.VertexAttribPointer(
             4,
             3,
             GL_FLOAT,
-            GL_FALSE,
+            GL_FALSE.0 as u8,
             std::mem::size_of::<Vertex>().try_into().unwrap(),
             std::mem::size_of::<[f32; 11]>() as *const _,
         );
-        glEnableVertexAttribArray(4);
+        gl.EnableVertexAttribArray(4);
 
-        self.vao.unwrap().unbind();
+        self.vao.unwrap().unbind(gl);
 
         self
     }
-    pub fn draw(&self) {
+    pub fn draw(&self, gl:&GlFns) {
         unsafe {
             //Print the combined lengths of the vertices and indicies
 
-            self.vao.unwrap().bind();
-            glDrawElements(
+            self.vao.unwrap().bind(gl);
+            gl.DrawElements(
                 GL_TRIANGLES,
                 self.indicies.len() as i32 * 3,
                 GL_UNSIGNED_INT,
                 std::ptr::null(),
             );
-            self.vao.unwrap().unbind();
+            self.vao.unwrap().unbind(gl);
         }
     }
 }

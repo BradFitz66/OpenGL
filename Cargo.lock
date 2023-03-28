@@ -14,6 +14,7 @@ dependencies = [
  "gl33",
  "glam",
  "image",
+ "lazy_static",
  "ogl33",
  "stb_image",
  "tobj",
