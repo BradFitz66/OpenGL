@@ -22,6 +22,7 @@ uniform sampler2D roughness_map;
 uniform sampler2D normal_map;
 uniform sampler2D metallic_map;
 
+uniform sampler2D equirectangular_map;
 
 in Vertex{
     vec3 pos;
@@ -46,14 +47,22 @@ struct micro_surface {
     vec3 h;
 };
 
+const vec2 invAtan = vec2(0.1591, 0.3183);
+
+vec2 sample_spherical_map(vec3 v) {
+    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+    uv *= invAtan;
+    uv += 0.5;
+    return uv;
+}
 
 
 pbr_material make_pbr_material() {
     pbr_material mat;
 
     mat.albedo=albedo;
-    mat.metallic=metallic*texture(metallic_map,i.uv*4).r;
-    mat.roughness=roughness*texture(roughness_map,i.uv*4).r;
+    mat.metallic=metallic * texture(metallic_map,i.uv*4).r;
+    mat.roughness=roughness * texture(roughness_map,i.uv*4).r;
     mat.f0=mix(vec3(0.04),mat.albedo,mat.metallic);
     mat.a=mat.roughness*mat.roughness;
     mat.k=((mat.roughness+1) * (mat.roughness+1))/8;
@@ -63,10 +72,9 @@ pbr_material make_pbr_material() {
 
 micro_surface make_micro_surface(pbr_material mat, vec3 pos, vec3 normal) {
     micro_surface ms;
-
     ms.n=normalize(normal);
     ms.v=normalize(camera_pos-pos);
-    ms.l=normalize(vec3(0.0,1.0,1.0));//Hardcoded light direction for now
+    ms.l= normalize(vec3(0.0,0.0,1.0) - pos);//Hardcoded light direction for now
     ms.h=normalize(ms.l+ms.v);
 
     return ms;
@@ -132,9 +140,12 @@ vec3 brdf(pbr_material mat, micro_surface ms) {
 out vec4 o_color;
 
 void main(){
+
+
+
     vec3 normal = normalize(texture(normal_map,i.uv*4).rgb*2.0-1.0);
     normal = normalize(i.TBN*normal);
-    //normal = i.norm;
+    //normal = i.norm; //This is just a hack to disable normal mapping for testing purposes
     pbr_material mat = make_pbr_material();
     micro_surface ms = make_micro_surface(mat,i.pos,normal);
 
@@ -142,6 +153,6 @@ void main(){
     vec3 Lo = M_PI * brdf(mat,ms) * NdotL * vec3(1.0,1.0,1.0);
     vec3 ambient = vec3(0.1)*mat.albedo;
     vec3 color_HDR = ambient + Lo;
-    vec3 final = color_HDR * texture(diffuse_map,i.uv*4).rgb;
+    vec3 final = color_HDR; //* texture(diffuse_map,i.uv*4).rgb;
     o_color = vec4(final,1.0);
 }

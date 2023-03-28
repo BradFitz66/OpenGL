@@ -3,31 +3,51 @@ use cgmath::{
     Deg, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation3, SquareMatrix, Vector2, Vector3,
 };
 use ogl33::*;
+use stb_image::image::{LoadResult, Image};
 
 use std::{
     collections::HashMap,
     ffi::{CStr, CString},
 };
 use std::{fs::File, io::prelude::*, path::Path};
-use radiant::*;
 //Wrapper for opengl textures
 #[derive(Clone)]
-pub struct Texture2D(pub GLuint);
+pub struct Texture2D<T>{
+    pub id: GLuint,
+    pub data: Vec<T>,
+}
 
-impl Texture2D {
-    pub unsafe fn new(texture_unit: GLenum) -> Option<Self> {
+impl Texture2D<u8> {
+    pub unsafe fn new(texture_unit: GLenum,image_path:&str) -> Option<Self> {
+        let path = Path::new(image_path);
+        let mut data:Vec<u8> = Vec::new();
+        let result:LoadResult = stb_image::image::load_with_depth(path, 0, true);
+
+        match result {
+            LoadResult::ImageU8(image) => {
+                data = image.data;
+            }
+            LoadResult::ImageF32(_image) => {
+                panic!("Tried to load F32 image as U8");
+            }
+            LoadResult::Error(error) => {
+                println!("Error loading image: {}", error);
+                return None;
+            }
+        }
+
         let mut texture = 0;
         glGenTextures(1, &mut texture);
         glActiveTexture(texture_unit);
         if texture == 0 {
             None
         } else {
-            Some(Self(texture))
+            Some(Self{id:texture,data:data})
         }
     }
 
     pub unsafe fn bind(&self) {
-        glBindTexture(GL_TEXTURE_2D, self.0);
+        glBindTexture(GL_TEXTURE_2D, self.id);
     }
 
     pub unsafe fn unbind(&self) {
@@ -36,7 +56,6 @@ impl Texture2D {
 
     pub unsafe fn set_data(
         &self,
-        data: &[u8],
         width: i32,
         height: i32,
         format: GLenum,
@@ -52,7 +71,75 @@ impl Texture2D {
             0,
             format,
             type_,
-            data.as_ptr() as *const _,
+            self.data.as_ptr() as *const c_void,
+        );
+    }
+
+    pub unsafe fn set_filter(&self, filter: GLenum) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter as i32);
+    }
+
+    pub unsafe fn set_wrap(&self, wrap: GLenum) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap as i32);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap as i32);
+    }
+}
+
+impl Texture2D<f32> {
+    pub unsafe fn new(texture_unit: GLenum,image_path:&str) -> Option<Self> {
+        let path = Path::new(image_path);
+        let mut data:Vec<f32> = Vec::new();
+        let result:LoadResult = stb_image::image::load(path);
+
+        match result {
+            LoadResult::ImageU8(_image) => {
+                panic!("Tried to load U8 image as F32");
+            }
+            LoadResult::ImageF32(image) => {
+                data = image.data;
+            }
+            LoadResult::Error(error) => {
+                panic!("Error loading image: {}", error);
+            }
+        }
+
+        let mut texture = 0;
+        glGenTextures(1, &mut texture);
+        glActiveTexture(texture_unit);
+        if texture == 0 {
+            None
+        } else {
+            Some(Self{id:texture,data:data})
+        }
+    }
+
+    pub unsafe fn bind(&self) {
+        glBindTexture(GL_TEXTURE_2D, self.id);
+    }
+
+    pub unsafe fn unbind(&self) {
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    pub unsafe fn set_data(
+        &self,
+        width: i32,
+        height: i32,
+        internal_format: GLint,
+        format: GLenum,
+        type_: GLenum,
+    ) {
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGB16F as i32,
+            width,
+            height,
+            0,
+            GL_RGB,
+            GL_UNSIGNED_BYTE,
+            self.data.as_ptr() as *const c_void,
         );
     }
 
@@ -268,41 +355,6 @@ unsafe fn compile_shader(shader_type: ShaderType, shader_src: &str) -> Option<u3
     Some(shader)
 }
 
-pub fn calculate_tangents(positions: Vec<[f32; 3]>, texcoords: Vec<[f32; 2]>) -> Vec<f32> {
-    let mut tangents: Vec<f32> = Vec::new();
-
-    for i in 0..positions.len() / 3 {
-        let i = i * 3;
-        let v0 = Vector3::new(positions[i][0], positions[i][1], positions[i][2]);
-        let v1 = Vector3::new(
-            positions[i + 1][0],
-            positions[i + 1][1],
-            positions[i + 1][2],
-        );
-        let v2 = Vector3::new(
-            positions[i + 2][0],
-            positions[i + 2][1],
-            positions[i + 2][2],
-        );
-
-        let uv0 = Vector2::new(texcoords[i][0], texcoords[i][1]);
-        let uv1 = Vector2::new(texcoords[i + 1][0], texcoords[i + 1][1]);
-        let uv2 = Vector2::new(texcoords[i + 2][0], texcoords[i + 2][1]);
-
-        let delta_pos1 = v1 - v0;
-        let delta_pos2 = v2 - v0;
-
-        let delta_uv1 = uv1 - uv0;
-        let delta_uv2 = uv2 - uv0;
-
-        let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
-        let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
-        tangents.push(tangent.x);
-        tangents.push(tangent.y);
-        tangents.push(tangent.z);
-    }
-    tangents
-}
 
 //Parse an obj file and return a mesh (HEAVILY WIP)
 pub fn mesh_from_obj(path: &Path) -> Mesh {
@@ -460,7 +512,6 @@ impl Mesh {
     }
 
     pub unsafe fn calculate_tangents(&mut self) {
-
         //Calculate tangents and bi-tangents for each triangle
         for i in (0..self.indicies.len()) {
             let i0 = self.indicies[i][0] as usize;
@@ -488,7 +539,6 @@ impl Mesh {
                 self.vertices[i0][4],
                 self.vertices[i0][5],
             );
-
 
             let uv0 = Vector2::new(self.vertices[i0][6], self.vertices[i0][7]);
             let uv1 = Vector2::new(self.vertices[i1][6], self.vertices[i1][7]);
@@ -522,7 +572,7 @@ impl Mesh {
             self.vertices[i0][11] = bitangent.x;
             self.vertices[i0][12] = bitangent.y;
             self.vertices[i0][13] = bitangent.z;
-            
+
             self.vertices[i1][11] = bitangent.x;
             self.vertices[i1][12] = bitangent.y;
             self.vertices[i1][13] = bitangent.z;
