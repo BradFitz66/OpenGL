@@ -1,7 +1,5 @@
 use bytemuck::*;
-use cgmath::{
-    Deg, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation3, SquareMatrix, Vector2, Vector3,
-};
+use glam::{Vec3, Quat, Mat4, Vec2};
 use ogl33::*;
 use stb_image::image::{LoadResult, Image};
 
@@ -247,16 +245,16 @@ impl ShaderProgram {
             .insert(name.to_str().unwrap().to_string(), uniform_location);
     }
 
-    pub unsafe fn set_mat4(&self, name: &str, mat: &Matrix4<f32>) {
+    pub unsafe fn set_mat4(&self, name: &str, mat: &Mat4) {
         glUniformMatrix4fv(
             self.1[name],
             1,
             GL_FALSE,
-            mat as *const Matrix4<f32> as *const f32,
+            mat as *const Mat4 as *const f32,
         );
     }
 
-    pub unsafe fn set_vec3(&self, name: &str, vec: &cgmath::Vector3<f32>) {
+    pub unsafe fn set_vec3(&self, name: &str, vec: Vec3) {
         glUniform3f(self.1[name], vec.x, vec.y, vec.z);
     }
 
@@ -459,28 +457,28 @@ impl Scene {
 //High level object that contains a mesh and a transform
 pub struct Object {
     pub mesh: Mesh,
-    pub position: Vector3<f32>,
-    pub rotation: Quaternion<f32>,
-    pub scale: Vector3<f32>,
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
 
-    pub model_matrix: Matrix4<f32>,
+    pub model_matrix: Mat4,
 }
 
 impl Object {
     pub fn new(mesh: Mesh) -> Self {
         Self {
             mesh,
-            position: Vector3::new(0.0, 0.0, 0.0),
-            rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
-            scale: Vector3::new(1.0, 1.0, 1.0),
-            model_matrix: Matrix4::identity(),
+            position: Vec3::new(0.0, 0.0, 0.0),
+            rotation: Quat::from_xyzw(0.0, 0.0, 0.0, 1.0),
+            scale: Vec3::new(1.0, 1.0, 1.0),
+            model_matrix: Mat4::from_translation(Vec3::new(0.0, 0.0, 0.0)),
         }
     }
 
     pub fn update_model_matrix(&mut self) {
-        self.model_matrix = Matrix4::from_translation(self.position)
-            * Matrix4::from(self.rotation)
-            * Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z);
+        self.model_matrix = Mat4::from_translation(self.position)
+            * Mat4::from_quat(self.rotation)
+            * Mat4::from_scale(self.scale);
     }
 }
 
@@ -491,8 +489,8 @@ pub type Vertex = [f32; 3 + 3 + 2 + 3 + 3]; //Position, Normal, TextureCoords, T
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub indicies: Vec<VertIndicies>,
-    pub tangents: Vec<Vector3<f32>>,
-    pub bi_tangents: Vec<Vector3<f32>>,
+    pub tangents: Vec<Vec3>,
+    pub bi_tangents: Vec<Vec3>,
     pub vao: Option<VertexArray>,
     pub vbo: Option<Buffer>,
     pub ebo: Option<Buffer>,
@@ -518,31 +516,31 @@ impl Mesh {
             let i1 = self.indicies[i][1] as usize;
             let i2 = self.indicies[i][2] as usize;
 
-            let v0 = Vector3::new(
+            let v0 = Vec3::new(
                 self.vertices[i0][0],
                 self.vertices[i0][1],
                 self.vertices[i0][2],
             );
-            let v1 = Vector3::new(
+            let v1 = Vec3::new(
                 self.vertices[i1][0],
                 self.vertices[i1][1],
                 self.vertices[i1][2],
             );
-            let v2 = Vector3::new(
+            let v2 = Vec3::new(
                 self.vertices[i2][0],
                 self.vertices[i2][1],
                 self.vertices[i2][2],
             );
 
-            let normal = Vector3::new(
+            let normal = Vec3::new(
                 self.vertices[i0][3],
                 self.vertices[i0][4],
                 self.vertices[i0][5],
             );
 
-            let uv0 = Vector2::new(self.vertices[i0][6], self.vertices[i0][7]);
-            let uv1 = Vector2::new(self.vertices[i1][6], self.vertices[i1][7]);
-            let uv2 = Vector2::new(self.vertices[i2][6], self.vertices[i2][7]);
+            let uv0 = Vec2::new(self.vertices[i0][6], self.vertices[i0][7]);
+            let uv1 = Vec2::new(self.vertices[i1][6], self.vertices[i1][7]);
+            let uv2 = Vec2::new(self.vertices[i2][6], self.vertices[i2][7]);
 
             let delta_pos1 = v1 - v0;
             let delta_pos2 = v2 - v0;
@@ -683,8 +681,8 @@ impl Mesh {
 }
 
 pub struct Camera {
-    pub position: Vector3<f32>,
-    pub target: Vector3<f32>,
+    pub position: Vec3,
+    pub target: Vec3,
     pub fov: f32,
     pub aspect: [f32; 2],
     pub near: f32,
@@ -692,7 +690,7 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(start_pos: Vector3<f32>, targ: Vector3<f32>) -> Self {
+    pub fn new(start_pos: Vec3, targ: Vec3) -> Self {
         Self {
             position: start_pos,
             target: targ,
@@ -703,44 +701,43 @@ impl Camera {
         }
     }
 
-    pub fn get_direction(&self) -> Vector3<f32> {
+    pub fn get_direction(&self) -> Vec3 {
         (self.target - self.position).normalize()
     }
 
-    pub fn get_right(&self) -> Vector3<f32> {
+    pub fn get_right(&self) -> Vec3 {
         self.get_direction()
-            .cross(Vector3::new(0.0, 1.0, 0.0))
+            .cross(Vec3::new(0.0, 1.0, 0.0))
             .normalize()
     }
 
-    pub fn get_up(&self) -> Vector3<f32> {
+    pub fn get_up(&self) -> Vec3 {
         self.get_right().cross(self.get_direction()).normalize()
     }
 
-    pub fn set_position(&mut self, pos: Vector3<f32>) {
+    pub fn set_position(&mut self, pos: Vec3) {
         self.position = pos;
     }
 
-    pub fn rotate(&mut self, angle: f32, axis: Vector3<f32>) {
-        let rot = Quaternion::from_axis_angle(axis, Rad(angle));
+    pub fn rotate(&mut self, angle: f32, axis: Vec3) {
+        let rot = Quat::from_axis_angle(axis, angle);
         self.target = rot * (self.target - self.position) + self.position;
     }
 
-    pub fn get_view_matrix(&self) -> Matrix4<f32> {
-        let pos_p = Point3::new(self.position.x, self.position.y, self.position.z);
-        let target_p = Point3::new(self.target.x, self.target.y, self.target.z);
+    pub fn get_view_matrix(&self) -> Mat4 {
+        let pos_p = Vec3::new(self.position.x, self.position.y, self.position.z);
+        let target_p = Vec3::new(self.target.x, self.target.y, self.target.z);
         let up_v = self.get_up();
-        let up_p = Vector3::new(up_v.x, up_v.y, up_v.z);
-        Matrix4::look_at_rh(pos_p, target_p, up_p)
+        let up_p = Vec3::new(up_v.x, up_v.y, up_v.z);
+        Mat4::look_at_rh(pos_p, target_p, up_p)
     }
 
-    pub fn get_projection_matrix(&self) -> Matrix4<f32> {
-        cgmath::PerspectiveFov {
-            fovy: Deg(self.fov).into(),
-            aspect: self.aspect[0] / self.aspect[1],
-            near: self.near,
-            far: self.far,
-        }
-        .into()
+    pub fn get_projection_matrix(&self) -> Mat4 {
+        Mat4::perspective_rh_gl(
+            self.fov, 
+            self.aspect[0] / self.aspect[1],
+            self.near, 
+            self.far
+        )
     }
 }

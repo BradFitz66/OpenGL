@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 bytemuck="1.13.1"
 ogl33 = { version = "0.2.0", features = ["debug_error_checks"]}
+gl33="*"
+glam="0.23.0"
+
 
 beryllium = "0.2.0-alpha.4"
 cgmath="0.18.0"

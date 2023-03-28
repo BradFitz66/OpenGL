@@ -11,6 +11,8 @@ dependencies = [
  "cgmath",
  "colored",
  "cstr",
+ "gl33",
+ "glam",
  "image",
  "ogl33",
  "stb_image",
@@ -122,6 +124,12 @@ dependencies = [
  "approx",
  "num-traits",
 ]
+
+[[package]]
+name = "chlorine"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75476fe966a8af7c0ceae2a3e514afa87d4451741fcdfab8bfaa07ad301842ec"
 
 [[package]]
 name = "color_quant"
@@ -296,6 +304,21 @@ dependencies = [
  "color_quant",
  "weezl",
 ]
+
+[[package]]
+name = "gl33"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29b2b7ada5ed872363f5d27e54e7cae69148cb5e4d05aa3cac1a40c30519bda3"
+dependencies = [
+ "chlorine",
+]
+
+[[package]]
+name = "glam"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e4afd9ad95555081e109fe1d21f2a30c691b5f0919c67dfa690a2e1eb6bd51c"
 
 [[package]]
 name = "half"

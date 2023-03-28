@@ -19,9 +19,10 @@ use core::{
     mem::{size_of, size_of_val},
 };
 
+use glam::*;
+
 use OpenGL_Renderer::*;
 
-use cgmath::{num_traits::clamp, *};
 use ogl33::*;
 
 use colored::*;
@@ -51,15 +52,15 @@ fn ping_pong(t: f32, min: f32, max: f32) -> f32 {
 
 #[derive(Debug, Clone, Copy)]
 struct PointLight {
-    position: Vector4<f32>,
-    color: Vector4<f32>,
+    position: Vec4,
+    color: Vec4,
 }
 
 impl Default for PointLight {
     fn default() -> Self {
         Self {
-            position: Vector4::new(0.0, 0.0, 0.0, 0.0),
-            color: Vector4::new(1.0, 1.0, 1.0, 0.0),
+            position: Vec4::new(0.0, 0.0, 0.0, 0.0),
+            color: Vec4::new(1.0, 1.0, 1.0, 0.0),
         }
     }
 }
@@ -136,7 +137,7 @@ fn main() {
     win.set_swap_interval(SwapInterval::Vsync);
 
     let mut shader_program;
-    let mut camera = Camera::new(Vector3::new(0.0, 1.0, 3.0), Vector3::new(0.0, 0.0, 0.0));
+    let mut camera = Camera::new(Vec3::new(0.0, 1.0, 3.0), Vec3::new(0.0, 0.0, 0.0));
 
     timer = Instant::now();
 
@@ -285,7 +286,7 @@ fn main() {
                     }
                     camera.rotate(
                         -((x_delta as f32) * delta_time * 0.1) as f32,
-                        Vector3::new(0.0, 1.0, 0.0),
+                        Vec3::new(0.0, 1.0, 0.0),
                     );
                     camera.rotate(
                         -((y_delta as f32) * delta_time * 0.1) as f32,
@@ -329,12 +330,12 @@ fn main() {
         unsafe {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            transform = Matrix4::from_angle_y(Deg(time * 0.1));
+            transform = Mat4::from_rotation_y(time * 0.01);
             shader_program.set_mat4("M", &transform);
             shader_program.set_mat4("V", &camera.get_view_matrix());
             shader_program.set_mat4("P", &camera.get_projection_matrix());
-            shader_program.set_vec3("camera_pos", &camera.position);
-            shader_program.set_vec3("albedo", &Vector3::new(1.0, 0.0, 0.0));
+            shader_program.set_vec3("camera_pos", camera.position);
+            shader_program.set_vec3("albedo", Vec3::new(1.0, 0.0, 0.0));
             shader_program.set_float("metallic", 1.0);
 
 
@@ -348,7 +349,7 @@ fn main() {
 
             sphere_object.mesh.draw();
 
-            shader_program.set_vec3("albedo", &Vector3::new(1.0, 1.0, 1.0));
+            shader_program.set_vec3("albedo", Vec3::new(1.0, 1.0, 1.0));
             //plane_object.mesh.draw();
         }
         win.swap_window();
